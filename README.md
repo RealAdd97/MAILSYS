@@ -2,4 +2,4 @@ AI automated ticketing system developed to reduce the workload on corporate team
 
  Made for INTWO
 
- Showcase(https://realadd97.github.io/MAILSYS/)
+ Showcase (https://realadd97.github.io/MAILSYS/)
