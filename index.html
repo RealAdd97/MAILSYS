@@ -782,6 +782,74 @@
       opacity: 0;
     }
 
+    /* ─────────────── HAMBURGER MENU ─────────────── */
+    .nav-hamburger {
+      display: none;
+      flex-direction: column;
+      justify-content: center;
+      gap: 5px;
+      width: 2rem;
+      height: 2rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+      z-index: 600;
+    }
+    .nav-hamburger span {
+      display: block;
+      width: 100%;
+      height: 1.5px;
+      background: var(--black);
+      transition: transform 0.3s cubic-bezier(0.76, 0, 0.24, 1), opacity 0.3s;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
+
+    /* Mobile nav drawer */
+    .nav-drawer {
+      display: none;
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: var(--white);
+      z-index: 490;
+      flex-direction: column;
+      justify-content: center;
+      align-items: flex-start;
+      padding: 6rem 2rem 3rem;
+      gap: 0;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .nav-drawer.open {
+      opacity: 1;
+      pointer-events: all;
+    }
+    .nav-drawer ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      width: 100%;
+    }
+    .nav-drawer ul li {
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-drawer ul li a {
+      display: block;
+      padding: 1.2rem 0;
+      font-family: var(--thunder);
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--black);
+      transition: color 0.2s;
+    }
+    .nav-drawer ul li a:active { color: var(--g500); }
+
     /* ─────────────── RESPONSIVE ─────────────── */
     @media (max-width: 900px) {
       nav { padding: 1.2rem 1.5rem; }
@@ -802,12 +870,113 @@
     }
 
     @media (max-width: 600px) {
+      /* ── Disable custom cursor on touch ── */
+      body { cursor: auto; }
+      #cursor { display: none; }
+
+      /* ── Nav: hide links, show hamburger + drawer ── */
       .nav-links { display: none; }
-      .hero-title { font-size: clamp(3.5rem, 18vw, 8rem); }
+      .nav-hamburger { display: flex; }
+      .nav-drawer { display: flex; }
+
+      /* ── Hero ── */
+      .hero {
+        padding: 6rem 1.2rem 3rem;
+        min-height: 100svh;
+      }
+      .hero-title {
+        font-size: clamp(3.8rem, 17vw, 7rem);
+        margin-bottom: 2.5rem;
+      }
+      .hero-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1.5rem;
+      }
+      .hero-desc { font-size: 1rem; max-width: 100%; }
+      .hero-stats { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 0.8rem 1.6rem; }
+
+      /* ── Sections ── */
+      .section { padding: 3.5rem 1.2rem; }
+      .section-heading { font-size: clamp(2.6rem, 12vw, 5rem); margin-bottom: 2.5rem; }
+      .arch-section { padding: 3.5rem 1.2rem; }
+
+      /* ── Pipeline ── */
+      .pipeline-step {
+        grid-template-columns: 2rem 1fr;
+        gap: 1rem;
+        padding: 2rem 0;
+      }
+      .pstep-desc {
+        grid-column: 1 / -1;
+        padding-left: 3rem;
+        font-size: 0.9rem;
+      }
+      .pstep-name { font-size: 1.25rem; }
+
+      /* ── Features ── */
+      .feature-item {
+        grid-template-columns: 2rem 1fr;
+        gap: 1rem;
+        padding: 1.8rem 0.3rem;
+      }
+      /* Disable hover fill effect on touch — use tap highlight instead */
+      .feature-item::before { display: none; }
+      .f-title { font-size: 1.3rem; }
+      .f-desc { font-size: 0.9rem; }
+
+      /* ── Architecture ── */
+      .arch-item { padding: 2rem 0; }
+      .arch-col:last-child .arch-item { padding: 2rem 0; border-left: none; border-top: 1px solid #222; }
+
+      /* ── Schema ── */
+      .schema-grid { grid-template-columns: 1fr; gap: 1.2rem; }
+      .schema-row { flex-direction: column; gap: 0.2rem; align-items: flex-start; }
+      .schema-col-desc { text-align: left; }
+
+      /* ── Tech stack ── */
       .tech-grid { grid-template-columns: 1fr; }
-      .tech-item { border-right: none !important; padding-left: 0 !important; padding-right: 0 !important; }
-      .pipeline-step { grid-template-columns: 2.5rem 1fr; }
-      .pstep-name { font-size: 1.3rem; }
+      .tech-item {
+        border-right: none !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+
+      /* ── How to Run ── */
+      .run-step {
+        grid-template-columns: 2rem 1fr;
+        gap: 1rem;
+        padding: 2rem 0;
+      }
+      .run-title { font-size: 1.25rem; }
+      .run-desc { font-size: 0.9rem; }
+      .code-block { font-size: 0.72rem; padding: 0.85rem 1rem; overflow-x: auto; white-space: pre; }
+
+      /* ── Future ── */
+      .future-grid { grid-template-columns: 1fr; }
+      .future-item { border-right: none !important; padding: 1.5rem 0; }
+
+      /* ── Footer ── */
+      footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1.5rem;
+        padding: 3rem 1.2rem;
+      }
+      .footer-right { text-align: left; }
+
+      /* ── Buttons: increase tap targets ── */
+      .btn-slide, .btn-fill {
+        padding: 0.75rem 1.6rem;
+        height: auto;
+        min-height: 2.75rem;
+      }
+    }
+
+    /* Very small phones */
+    @media (max-width: 380px) {
+      .hero-title { font-size: clamp(3.2rem, 15vw, 5rem); }
+      .section-heading { font-size: clamp(2.2rem, 10vw, 4rem); }
     }
   </style>
 </head>
@@ -822,6 +991,9 @@
   <!-- ─────────────── NAV ─────────────── -->
   <nav id="site-nav">
     <a href="#hero" class="nav-logo">MAIL<span>SYS</span></a>
+    <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
     <ul class="nav-links">
       <li>
         <a href="#pipeline" class="btn-arrow">
@@ -860,6 +1032,19 @@
       
     </ul>
   </nav>
+
+  <!-- MOBILE NAV DRAWER -->
+  <div class="nav-drawer" id="nav-drawer" aria-hidden="true">
+    <ul>
+      <li><a href="#pipeline" class="drawer-link">Pipeline</a></li>
+      <li><a href="#features" class="drawer-link">Features</a></li>
+      <li><a href="#architecture" class="drawer-link">Architecture</a></li>
+      <li><a href="#schema" class="drawer-link">Schema</a></li>
+      <li><a href="#stack" class="drawer-link">Technologies</a></li>
+      <li><a href="#run" class="drawer-link">Get Running</a></li>
+      <li><a href="#future" class="drawer-link">Planned</a></li>
+    </ul>
+  </div>
 
   <!-- ─────────────── HERO ─────────────── -->
   <section class="hero" id="hero">
@@ -1825,6 +2010,36 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       duration: 0.6,
       ease: 'power3.out',
       delay: 0.5
+    });
+
+    // ─── HAMBURGER / MOBILE DRAWER ───
+    const hamburger = document.getElementById('nav-hamburger');
+    const drawer = document.getElementById('nav-drawer');
+    let drawerOpen = false;
+
+    function toggleDrawer(open) {
+      drawerOpen = open;
+      hamburger.classList.toggle('open', open);
+      drawer.classList.toggle('open', open);
+      hamburger.setAttribute('aria-expanded', open);
+      drawer.setAttribute('aria-hidden', !open);
+      document.body.style.overflow = open ? 'hidden' : '';
+    }
+
+    hamburger.addEventListener('click', () => toggleDrawer(!drawerOpen));
+
+    // Close on link tap + scroll to section
+    drawer.querySelectorAll('.drawer-link').forEach(link => {
+      link.addEventListener('click', e => {
+        e.preventDefault();
+        toggleDrawer(false);
+        const target = document.querySelector(link.getAttribute('href'));
+        if (target) {
+          const navHeight = document.getElementById('site-nav').offsetHeight;
+          const topOffset = target.offsetTop - navHeight;
+          gsap.to(window, { scrollTo: { y: topOffset }, duration: 0.9, ease: 'power3.inOut' });
+        }
+      });
     });
   </script>
 
