@@ -1,0 +1,35 @@
+# Configuration for AI Email Ticketing Service
+# Note: Keep this file secure and do not commit to version control.
+
+imap:
+  server: "imap.gmail.com"
+  email: ""
+  app_password: ""  # Use an app password for Gmail(Enable 2FA and create an app password)
+
+database:
+  conn_str: "Driver={ODBC Driver 17 for SQL Server};Server=localhost\\SQLEXPRESS;Database=SupportAutomation;Trusted_Connection=yes;"
+
+ollama:
+  model: "llama3"
+
+smtp:
+  server: "smtp.gmail.com"
+  port: 587
+  email: ""
+  app_password: ""  # Use an app password for Gmail(Enable 2FA and create an app password)
+  # Set to the email address where notifications should be sent
+  notification_email: ""
+
+processing:
+  thread_pool_size: 4
+  knowledge_base_folder: "knowledge_base"
+  # Polling interval in seconds when no mail is found (if using polling)
+  # If using IMAP IDLE, this is used as the timeout for the IDLE loop
+  idle_timeout: 30
+  # Fallback polling interval in seconds (if IDLE fails or is disabled)
+  fallback_polling_interval: 10
+
+logging:
+  level: "INFO"
+  # If set, logs will be written to this file in addition to console
+  file: ""
