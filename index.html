@@ -1196,7 +1196,7 @@
 
     <div class="pipeline-steps">
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">01</span>
         <div class="pstep-name">Email Ingestion</div>
         <div class="pstep-desc">
@@ -1208,7 +1208,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">02</span>
         <div class="pstep-name">Ticket Generation</div>
         <div class="pstep-desc">
@@ -1219,7 +1219,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">03</span>
         <div class="pstep-name">Knowledge Base Search</div>
         <div class="pstep-desc">
@@ -1231,7 +1231,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">04</span>
         <div class="pstep-name">AI Processing</div>
         <div class="pstep-desc">
@@ -1244,7 +1244,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">05</span>
         <div class="pstep-name">Team Lead Routing</div>
         <div class="pstep-desc">
@@ -1257,7 +1257,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">06</span>
         <div class="pstep-name">Notifications and Solution</div>
         <div class="pstep-desc">
@@ -1270,7 +1270,7 @@
         </div>
       </div>
 
-      <div class="pipeline-step fade-up">
+      <div class="pipeline-step">
         <span class="pstep-num">07</span>
         <div class="pstep-name">Ticket Notes and Replies</div>
         <div class="pstep-desc">
@@ -1455,7 +1455,7 @@
 
     <div class="arch-grid">
       <div class="arch-col">
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 01</div>
           <div class="arch-item-title">IMAP Email Ingestion</div>
           <div class="arch-item-desc">
@@ -1468,7 +1468,7 @@
             atomically after successful ticket insertion.
           </div>
         </div>
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 02</div>
           <div class="arch-item-title">SQL Server Database</div>
           <div class="arch-item-desc">
@@ -1479,7 +1479,7 @@
             own database connection to avoid cross-thread locking and ensure safe concurrent writes.
           </div>
         </div>
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 03</div>
           <div class="arch-item-title">Knowledge Base</div>
           <div class="arch-item-desc">
@@ -1493,7 +1493,7 @@
         </div>
       </div>
       <div class="arch-col">
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 04</div>
           <div class="arch-item-title">Ollama Llama 3</div>
           <div class="arch-item-desc">
@@ -1505,7 +1505,7 @@
             even from partially malformed model output.
           </div>
         </div>
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 05</div>
           <div class="arch-item-title">SMTP Notifications</div>
           <div class="arch-item-desc">
@@ -1518,7 +1518,7 @@
             a concrete answer drawn from official policy.
           </div>
         </div>
-        <div class="arch-item fade-up">
+        <div class="arch-item">
           <div class="arch-item-layer">Layer 06</div>
           <div class="arch-item-title">Thread Pool Executor</div>
           <div class="arch-item-desc">
@@ -1549,7 +1549,7 @@
     <div class="schema-grid">
 
       <!-- Tickets table -->
-      <div class="schema-table fade-up">
+      <div class="schema-table">
         <div class="schema-table-head">
           <div class="schema-table-name">Tickets</div>
         </div>
@@ -1596,7 +1596,7 @@
       </div>
 
       <!-- TeamLeadMapping table -->
-      <div class="schema-table fade-up">
+      <div class="schema-table">
         <div class="schema-table-head">
           <div class="schema-table-name">TeamLeadMapping</div>
         </div>
@@ -1634,7 +1634,7 @@
       </div>
 
       <!-- TicketNotes table -->
-      <div class="schema-table fade-up">
+      <div class="schema-table">
         <div class="schema-table-head">
           <div class="schema-table-name">TicketNotes</div>
         </div>
@@ -1680,7 +1680,7 @@
 
     <div class="tech-grid">
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">Runtime</div>
         <div class="tech-name">Python 3.x</div>
         <div class="tech-desc">
@@ -1690,7 +1690,7 @@
         </div>
       </div>
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">AI Inference</div>
         <div class="tech-name">Ollama + Llama 3</div>
         <div class="tech-desc">
@@ -1700,7 +1700,7 @@
         </div>
       </div>
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">Database</div>
         <div class="tech-name">SQL Server</div>
         <div class="tech-desc">
@@ -1710,7 +1710,7 @@
         </div>
       </div>
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">Email</div>
         <div class="tech-name">IMAP + SMTP</div>
         <div class="tech-desc">
@@ -1720,7 +1720,7 @@
         </div>
       </div>
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">Configuration</div>
         <div class="tech-name">PyYAML</div>
         <div class="tech-desc">
@@ -1730,7 +1730,7 @@
         </div>
       </div>
 
-      <div class="tech-item fade-up">
+      <div class="tech-item">
         <div class="tech-role">Concurrency</div>
         <div class="tech-name">ThreadPoolExecutor</div>
         <div class="tech-desc">
@@ -1756,7 +1756,7 @@
 
     <div class="run-steps">
 
-      <div class="run-step fade-up">
+      <div class="run-step">
         <span class="run-num">01</span>
         <div class="run-content">
           <div class="run-title">Install Dependencies</div>
@@ -1768,7 +1768,7 @@
         </div>
       </div>
 
-      <div class="run-step fade-up">
+      <div class="run-step">
         <span class="run-num">02</span>
         <div class="run-content">
           <div class="run-title">Configure config.yaml</div>
@@ -1782,7 +1782,7 @@
         </div>
       </div>
 
-      <div class="run-step fade-up">
+      <div class="run-step">
         <span class="run-num">03</span>
         <div class="run-content">
           <div class="run-title">Populate the Knowledge Base</div>
@@ -1796,7 +1796,7 @@
         </div>
       </div>
 
-      <div class="run-step fade-up">
+      <div class="run-step">
         <span class="run-num">04</span>
         <div class="run-content">
           <div class="run-title">Start Ollama with Llama 3</div>
@@ -1809,7 +1809,7 @@
         </div>
       </div>
 
-      <div class="run-step fade-up">
+      <div class="run-step">
         <span class="run-num">05</span>
         <div class="run-content">
           <div class="run-title">Launch the Pipeline</div>
@@ -1837,31 +1837,31 @@
     </div>
 
     <div class="future-grid">
-      <div class="future-item fade-up">
+      <div class="future-item">
         <div class="future-num">01</div>
         <div class="future-text">
           Agent interface for manually adding <em>AgentComment</em> notes to any ticket via API or dashboard.
         </div>
       </div>
-      <div class="future-item fade-up">
+      <div class="future-item">
         <div class="future-num">02</div>
         <div class="future-text">
           API endpoint and view to list all notes for a given Ticket ID, ordered by timestamp.
         </div>
       </div>
-      <div class="future-item fade-up">
+      <div class="future-item">
         <div class="future-num">03</div>
         <div class="future-text">
           Push notifications to the assigned team lead when a new note is added to one of their tickets.
         </div>
       </div>
-      <div class="future-item fade-up">
+      <div class="future-item">
         <div class="future-num">04</div>
         <div class="future-text">
           Full note history included in ticket views, reports, and exported records for audit trails.
         </div>
       </div>
-      <div class="future-item fade-up">
+      <div class="future-item">
         <div class="future-num">05</div>
         <div class="future-text">
           IMAP IDLE full implementation for true real-time push, eliminating any polling latency.
