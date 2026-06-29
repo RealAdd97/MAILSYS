@@ -4,452 +4,339 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>MAILSYS | AI Email Ticketing</title>
-
-
-  <!-- GSAP + ScrollTrigger + ScrollToPlugin -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollToPlugin.min.js"></script>
-
   <style>
-    @font-face {
-  font-family: 'Thunder';
-  src: url('/fonts/Thunder-Bold.woff2') format('woff2'),
-       url('/fonts/Thunder-Bold.woff') format('woff');
-  font-weight: bold;
-  font-style: normal;
-}
-@font-face {
-  font-family: 'Ogg';
-  src: url('/fonts/Ogg-Roman.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-}
-    /* ─────────────── RESET ─────────────── */
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    /* html { font-size: 16px; scroll-behavior: smooth; } */
-
-    /* ─────────────── TOKENS ─────────────── */
-    :root {
-      --black:   #000000;
-      --white:   #ffffff;
-      --g900:    #111111;
-      --g700:    #555555;
-      --g500:    #888888;
-      --g300:    #c8c8c8;
-      --g100:    #f0f0f0;
-      --border:  #dedede;
-
-      --thunder: 'Thunder', 'Arial Narrow', Impact, sans-serif;
-      --ogg:     'Ogg', 'Cormorant Garamond', Georgia, 'Times New Roman', serif;
-    }
-
-    /* ─────────────── BASE ─────────────── */
-    body {
-      background: var(--white);
-      color: var(--black);
-      font-family: var(--ogg);
-      overflow-x: hidden;
+    /* ─── VIDEO POPUP ─── */
+    .vid-trigger {
+      border-bottom: 1px dashed rgba(100,95,88,.38);
       cursor: none;
+      transition: border-color .2s, color .2s;
+      display: inline;
+    }
+    .vid-trigger:hover { border-bottom-color: var(--text); }
+
+    #vid-popup {
+      position: fixed;
+      width: 300px;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      z-index: 9000;
+      pointer-events: none;
+      overflow: hidden;
+      opacity: 0;
+      transform: scale(0.92) translateY(6px);
+      transition: opacity .22s cubic-bezier(.76,0,.24,1), transform .22s cubic-bezier(.76,0,.24,1);
+      top: 0; left: 0;
+    }
+    #vid-popup.show { opacity: 1; transform: scale(1) translateY(0); }
+    #vid-popup-screen {
+      position: relative; width: 100%; height: 168px;
+      overflow: hidden; background: #090909;
+    }
+    #vid-popup-canvas {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; display: block;
+    }
+    #vid-popup-video {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      object-fit: cover; display: block;
+      opacity: 0; transition: opacity .3s;
+    }
+    #vid-popup-video.loaded { opacity: 1; }
+    #vid-popup-bar {
+      padding: .55rem .9rem;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid #222;
+    }
+    #vid-popup-name {
+      font-family: 'Thunder','Arial Narrow',Impact,sans-serif;
+      font-size: .6rem; letter-spacing: .2em;
+      text-transform: uppercase; color: rgba(180,175,165,.55);
+    }
+    #vid-popup-indicator {
+      display: flex; align-items: center; gap: .4rem;
+      font-family: 'Thunder','Arial Narrow',Impact,sans-serif;
+      font-size: .55rem; letter-spacing: .18em;
+      text-transform: uppercase; color: rgba(120,115,108,.5);
+    }
+    #vid-popup-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+      background: rgba(160,155,148,.4);
+      animation: vid-pulse 1.4s ease-in-out infinite;
+    }
+    /* ─── FULLSCREEN OVERLAYS ─── */
+
+/* Styles applied ONLY when the popup goes fullscreen */
+#vid-popup:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: none !important;
+  max-height: none !important;
+  transform: none !important; /* Resets positioning animations */
+  display: flex;
+  flex-direction: column;
+  background: #080808;
+}
+
+/* Make the video/canvas viewport fill all available space above the status bar */
+#vid-popup:fullscreen #vid-popup-screen {
+  flex: 1;
+  height: auto; /* Overrides the static 168px height */
+}
+
+/* Allow pointer events back in fullscreen so user can double-click anywhere to exit */
+#vid-popup:fullscreen {
+  pointer-events: auto;
+  cursor: none;
+}
+    @keyframes vid-pulse {
+      0%,100% { opacity: .4; transform: scale(1); }
+      50% { opacity: 1; transform: scale(1.3); }
     }
 
-    a { text-decoration: none; color: inherit; }
+    /* ─── LOADING SCREEN ─── */
+    #loading-screen {
+      position: fixed; inset: 0;
+      background: #000;
+      z-index: 20000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 2rem;
+    }
+    #loading-logo {
+      font-family: 'Thunder','Arial Narrow',Impact,sans-serif;
+      font-size: 1.1rem; font-weight: 700;
+      letter-spacing: 0.28em; text-transform: uppercase;
+      color: #fff;
+    }
+    #loading-logo span { color: #555; }
+    #loading-bar-wrap {
+      width: 220px; height: 1px;
+      background: #1e1e1e; overflow: hidden;
+    }
+    #loading-bar {
+      height: 100%; width: 0%;
+      background: #fff;
+      transition: width 0.05s linear;
+    }
+    #loading-status {
+      font-family: 'Thunder','Arial Narrow',Impact,sans-serif;
+      font-size: 0.58rem; letter-spacing: 0.28em;
+      text-transform: uppercase; color: #444;
+    }
 
+    @font-face {
+      font-family: 'Thunder';
+      src: url('/fonts/Thunder-Bold.woff2') format('woff2'),
+           url('/fonts/Thunder-Bold.woff') format('woff');
+      font-weight: bold; font-style: normal;
+    }
+    @font-face {
+      font-family: 'Ogg';
+      src: url('/fonts/Ogg-Roman.woff2') format('woff2');
+      font-weight: 400; font-style: normal;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --black: #000000; --white: #ffffff;
+      --g900: #111111; --g700: #555555;
+      --g500: #888888; --g300: #c8c8c8;
+      --g100: #f0f0f0; --border: #dedede;
+      --thunder: 'Thunder','Arial Narrow',Impact,sans-serif;
+      --ogg: 'Ogg','Cormorant Garamond',Georgia,'Times New Roman',serif;
+    }
+    body { background: var(--white); color: var(--black); font-family: var(--ogg); overflow-x: hidden; cursor: none; }
+    a { text-decoration: none; color: inherit; }
     ::-webkit-scrollbar { width: 3px; }
     ::-webkit-scrollbar-track { background: var(--white); }
     ::-webkit-scrollbar-thumb { background: var(--black); }
 
-    /* ─────────────── PAGE TRANSITION OVERLAY (page-transition-01) ─────────────── */
     #page-overlay {
-      position: fixed;
-      inset: 0;
-      background: var(--black);
-      z-index: 10000;
-      pointer-events: none;
+      position: fixed; inset: 0; background: var(--black);
+      z-index: 10000; pointer-events: none;
     }
-
-    /* ─────────────── CUSTOM CURSOR ─────────────── */
     #cursor {
-      position: fixed;
-      width: 7px;
-      height: 7px;
-      background: var(--white);
-      border-radius: 50%;
-      pointer-events: none;
-      z-index: 9999;
+      position: fixed; width: 7px; height: 7px;
+      background: var(--white); border-radius: 50%;
+      pointer-events: none; z-index: 9999;
       transform: translate(-50%, -50%);
-      mix-blend-mode: difference;
-      transition: transform 0.08s linear;
+      mix-blend-mode: difference; transition: transform 0.08s linear;
     }
-    #cursor.large {
-      transform: translate(-50%, -50%) scale(6);
-      opacity: 0.08;
-    }
+    #cursor.large { transform: translate(-50%, -50%) scale(6); opacity: 0.08; }
 
-
-
-    /* ─────────────── NAV ─────────────── */
     nav {
-      position: fixed;
-      top: 0; left: 0; right: 0;
-      z-index: 500;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 1.5rem 2.5rem;
-      background: rgba(255,255,255,0.96);
-      backdrop-filter: blur(6px);
+      position: fixed; top: 0; left: 0; right: 0;
+      z-index: 500; display: flex; align-items: center;
+      justify-content: space-between; padding: 1.5rem 2.5rem;
+      background: rgba(255,255,255,0.96); backdrop-filter: blur(6px);
       border-bottom: 1px solid var(--border);
     }
-
     .nav-logo {
-      font-family: var(--thunder);
-      font-size: 1rem;
-      font-weight: 700;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      cursor: none;
+      font-family: var(--thunder); font-size: 1rem;
+      font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; cursor: none;
     }
     .nav-logo span { color: var(--g500); }
+    .nav-links { display: flex; align-items: center; gap: 2rem; list-style: none; }
 
-    .nav-links {
-      display: flex;
-      align-items: center;
-      gap: 2rem;
-      list-style: none;
+    .plan-button {
+      font-size: 0.95rem; color: var(--g700);
+      font-family: var(--thunder); font-weight: 700;
+      letter-spacing: 0.15em; cursor: none; position: relative;
+      border: none; background: none; text-transform: uppercase;
+      transition-timing-function: cubic-bezier(0.25,0.8,0.25,1);
+      transition-duration: 400ms; transition-property: color;
+    }
+    .plan-button:hover { color: #000000; }
+    .plan-button:hover:after { width: 100%; left: 0%; }
+    .plan-button:after {
+      content: ""; pointer-events: none; bottom: -2px; left: 50%;
+      position: absolute; width: 0%; height: 2px;
+      background-color: #000000;
+      transition-timing-function: cubic-bezier(0.25,0.8,0.25,1);
+      transition-duration: 400ms; transition-property: width, left;
     }
 
-        /* From Uiverse.io by WhiteNervosa */ 
-.plan-button {
-  font-size: 0.95rem;
-  color: var(--g700);
-  font-family: var(--thunder);
-  font-weight: 700;
-  letter-spacing: 0.15em;
-  cursor: none;
-  position: relative;
-  border: none;
-  background: none;
-  text-transform: uppercase;
-  transition-timing-function: cubic-bezier(0.25, 0.8, 0.25, 1);
-  transition-duration: 400ms;
-  transition-property: color;
-}
-
-.plan-button:hover {
-  color: #000000;
-}
-
-
-.plan-button:hover:after {
-  width: 100%;
-  left: 0%;
-}
-
-.plan-button:after {
-  content: "";
-  pointer-events: none;
-  bottom: -2px;
-  left: 50%;
-  position: absolute;
-  width: 0%;
-  height: 2px;
-  background-color: #000000;
-  transition-timing-function: cubic-bezier(0.25, 0.8, 0.25, 1);
-  transition-duration: 400ms;
-  transition-property: width, left;
-}
-
-    /* ─── ARROW REVEAL BUTTON (button-02) ─── */
     .btn-arrow {
-      font-family: var(--thunder);
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      color: var(--g700);
-      display: inline-flex;
-      align-items: center;
-      gap: 0;
-      background: none;
-      border: none;
-      cursor: none;
-      transition: color 0.25s;
+      font-family: var(--thunder); font-size: 0.75rem; font-weight: 600;
+      letter-spacing: 0.15em; text-transform: uppercase; color: var(--g700);
+      display: inline-flex; align-items: center; gap: 0;
+      background: none; border: none; cursor: none; transition: color 0.25s;
     }
     .btn-arrow:hover { color: var(--black); }
     .btn-arrow .arrow {
-      display: inline-block;
-      overflow: hidden;
-      max-width: 0;
-      transition: max-width 0.32s cubic-bezier(0.76, 0, 0.24, 1);
+      display: inline-block; overflow: hidden; max-width: 0;
+      transition: max-width 0.32s cubic-bezier(0.76,0,0.24,1);
     }
     .btn-arrow:hover .arrow { max-width: 1.4rem; }
 
-    /* ─── SLIDE TEXT BUTTON (button-01) ─── */
     .btn-slide {
-      font-family: var(--thunder);
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--black);
-      border: 1px solid var(--black);
-      padding: 0.55rem 1.3rem;
-      display: inline-block;
-      position: relative;
-      overflow: hidden;
-      cursor: none;
-      height: 2rem;
-      line-height: 1;
+      font-family: var(--thunder); font-size: 0.75rem; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--black); border: 1px solid var(--black);
+      padding: 0.55rem 1.3rem; display: inline-block;
+      position: relative; overflow: hidden; cursor: none;
+      height: 2rem; line-height: 1;
     }
-    .btn-slide .t1,
-    .btn-slide .t2 {
-      display: flex;
-      align-items: center;
-      height: 100%;
-      transition: transform 0.32s cubic-bezier(0.76, 0, 0.24, 1);
+    .btn-slide .t1, .btn-slide .t2 {
+      display: flex; align-items: center; height: 100%;
+      transition: transform 0.32s cubic-bezier(0.76,0,0.24,1);
     }
     .btn-slide .t1 { position: relative; }
     .btn-slide .t2 {
-      position: absolute;
-      inset: 0;
-      padding: 0 1.3rem;
+      position: absolute; inset: 0; padding: 0 1.3rem;
       transform: translateY(110%);
     }
     .btn-slide:hover .t1 { transform: translateY(-110%); }
     .btn-slide:hover .t2 { transform: translateY(0); }
 
-    /* ─── COLOR FILL BUTTON (button-04) ─── */
     .btn-fill {
-      font-family: var(--thunder);
-      font-size: 0.75rem;
-      font-weight: 700;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color:var(--g700);
-      border: 1px solid var(--black);
-      padding: 0.55rem 1.3rem;
-      display: inline-block;
-      position: relative;
-      overflow: hidden;
-      cursor: none;
-      transition: color 0.35s;
+      font-family: var(--thunder); font-size: 0.75rem; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      color: var(--g700); border: 1px solid var(--black);
+      padding: 0.55rem 1.3rem; display: inline-block;
+      position: relative; overflow: hidden; cursor: none; transition: color 0.35s;
     }
     .btn-fill::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: var(--black);
-      transform: translateX(-101%);
-      transition: transform 0.35s cubic-bezier(0.76, 0, 0.24, 1);
-      z-index: -1;
+      content: ''; position: absolute; inset: 0;
+      background: var(--black); transform: translateX(-101%);
+      transition: transform 0.35s cubic-bezier(0.76,0,0.24,1); z-index: -1;
     }
     .btn-fill:hover::before { transform: translateX(0); }
     .btn-fill:hover { color: var(--white); }
 
-    /* ─────────────── HERO ─────────────── */
     .hero {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: flex-end;
-      padding: 8rem 2.5rem 4.5rem;
-      border-bottom: 1px solid var(--border);
-      position: relative;
+      min-height: 100vh; display: flex; flex-direction: column;
+      justify-content: flex-end; padding: 8rem 2.5rem 4.5rem;
+      border-bottom: 1px solid var(--border); position: relative;
     }
-
     .hero-eyebrow {
-      font-family: var(--thunder);
-      font-size: 0.7rem;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--g500);
-      overflow: hidden;
-      margin-bottom: 2.5rem;
+      font-family: var(--thunder); font-size: 0.7rem;
+      letter-spacing: 0.25em; text-transform: uppercase;
+      color: var(--g500); overflow: hidden; margin-bottom: 2.5rem;
     }
     .hero-eyebrow span { display: block; transform: translateY(120%); }
-
-    /* Slide-Up Text Reveal (text-reveal-01) */
     .hero-title {
       font-family: var(--thunder);
-      font-size: clamp(5rem, 13vw, 15rem);
-      font-weight: 700;
-      line-height: 0.88;
-      letter-spacing: -0.01em;
-      text-transform: uppercase;
-      margin-bottom: 4rem;
+      font-size: clamp(5rem, 13vw, 15rem); font-weight: 700;
+      line-height: 0.88; letter-spacing: -0.01em;
+      text-transform: uppercase; margin-bottom: 4rem;
     }
-    .hero-title .line {
-      display: block;
-      overflow: hidden;
-    }
-    .hero-title .line span {
-      display: block;
-      transform: translateY(110%);
-    }
-
+    .hero-title .line { display: block; overflow: hidden; }
+    .hero-title .line span { display: block; transform: translateY(110%); }
     .hero-bottom {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      gap: 3rem;
+      display: flex; align-items: flex-end;
+      justify-content: space-between; gap: 3rem;
     }
-
-    /* Fade-In Text Reveal (text-reveal-02) */
     .hero-desc {
-      font-family: var(--ogg);
-      font-size: 1.1rem;
-      line-height: 1.7;
-      color: var(--g700);
-      max-width: 500px;
-      opacity: 0;
-      transform: translateY(16px);
+      font-family: var(--ogg); font-size: 1.1rem;
+      line-height: 1.7; color: var(--g700);
+      max-width: 500px; opacity: 0; transform: translateY(16px);
     }
-
-    .hero-stats {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 0.4rem;
-      opacity: 0;
-    }
+    .hero-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; opacity: 0; }
     .hero-stat {
-      font-family: var(--thunder);
-      font-size: 0.72rem;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-      color: var(--g500);
+      font-family: var(--thunder); font-size: 0.72rem;
+      letter-spacing: 0.12em; text-transform: uppercase; color: var(--g500);
     }
-    .hero-stat strong {
-      color: var(--black);
-      font-weight: 700;
-    }
+    .hero-stat strong { color: var(--black); font-weight: 700; }
 
-    /* ─────────────── MARQUEE (black strip) ─────────────── */
     .marquee-section {
-      background: var(--black);
-      padding: 0.85rem 0;
-      overflow: hidden;
-      border-bottom: 1px solid var(--black);
+      background: var(--black); padding: 0.85rem 0;
+      overflow: hidden; border-bottom: 1px solid var(--black);
     }
     .marquee-track {
-      display: flex;
-      gap: 3.5rem;
-      animation: scroll-marquee 22s linear infinite;
-      width: max-content;
+      display: flex; gap: 3.5rem;
+      animation: scroll-marquee 22s linear infinite; width: max-content;
     }
     .marquee-item {
-      font-family: var(--thunder);
-      font-size: 0.7rem;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-      color: var(--white);
-      white-space: nowrap;
-      flex-shrink: 0;
+      font-family: var(--thunder); font-size: 0.7rem;
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: var(--white); white-space: nowrap; flex-shrink: 0;
     }
     .marquee-sep { color: var(--g700); }
     @keyframes scroll-marquee {
-      0%   { transform: translateX(0); }
-      100% { transform: translateX(-50%); }
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%),
+        ; }
     }
 
-    /* ─────────────── SECTION SHELL ─────────────── */
-    .section {
-      padding: 7rem 2.5rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .section-meta {
-      display: flex;
-      align-items: baseline;
-      gap: 1.2rem;
-      margin-bottom: 4rem;
-    }
-    .section-meta-num {
-      font-family: var(--thunder);
-      font-size: 0.68rem;
-      letter-spacing: 0.25em;
-      color: var(--g300);
-    }
-    .section-meta-label {
-      font-family: var(--thunder);
-      font-size: 0.68rem;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--g300);
-    }
-
-    /* Section big heading */
+    .section { padding: 7rem 2.5rem; border-bottom: 1px solid var(--border); }
+    .section-meta { display: flex; align-items: baseline; gap: 1.2rem; margin-bottom: 4rem; }
+    .section-meta-num { font-family: var(--thunder); font-size: 0.68rem; letter-spacing: 0.25em; color: var(--g300); }
+    .section-meta-label { font-family: var(--thunder); font-size: 0.68rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--g300); }
     .section-heading {
-      font-family: var(--thunder);
-      font-size: clamp(3.2rem, 8vw, 9rem);
-      font-weight: 700;
-      line-height: 0.88;
-      letter-spacing: -0.01em;
-      text-transform: uppercase;
-      overflow: hidden;
-      margin-bottom: 5rem;
+      font-family: var(--thunder); font-size: clamp(3.2rem, 8vw, 9rem);
+      font-weight: 700; line-height: 0.88; letter-spacing: -0.01em;
+      text-transform: uppercase; overflow: hidden; margin-bottom: 5rem;
     }
     .section-heading span { display: block; }
 
-    /* ─────────────── PIPELINE (Section Transition clip-path reveal) ─────────────── */
     .pipeline-steps { display: flex; flex-direction: column; }
-
     .pipeline-step {
-      display: grid;
-      grid-template-columns: 3.5rem 1fr 1fr;
-      gap: 2rem;
-      padding: 2.8rem 0;
-      border-top: 1px solid var(--border);
-      align-items: start;
+      display: grid; grid-template-columns: 3.5rem 1fr 1fr;
+      gap: 2rem; padding: 2.8rem 0;
+      border-top: 1px solid var(--border); align-items: start;
     }
     .pipeline-step:last-child { border-bottom: 1px solid var(--border); }
+    .pstep-num { font-family: var(--thunder); font-size: 0.68rem; letter-spacing: 0.15em; color: var(--g300); padding-top: 0.25rem; }
+    .pstep-name { font-family: var(--thunder); font-size: 1.75rem; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; line-height: 1.1; }
+    .pstep-desc { font-family: var(--ogg); font-size: 0.95rem; line-height: 1.75; color: var(--g700); }
 
-    .pstep-num {
-      font-family: var(--thunder);
-      font-size: 0.68rem;
-      letter-spacing: 0.15em;
-      color: var(--g300);
-      padding-top: 0.25rem;
-    }
-    .pstep-name {
-      font-family: var(--thunder);
-      font-size: 1.75rem;
-      font-weight: 700;
-      letter-spacing: 0.03em;
-      text-transform: uppercase;
-      line-height: 1.1;
-    }
-    .pstep-desc {
-      font-family: var(--ogg);
-      font-size: 0.95rem;
-      line-height: 1.75;
-      color: var(--g700);
-    }
-
-    /* ─────────────── FEATURES (hasque-style list, color fill on hover) ─────────────── */
     .feature-list { display: flex; flex-direction: column; }
-
     .feature-item {
-      display: grid;
-      grid-template-columns: 3.5rem 1fr;
-      gap: 2rem;
-      padding: 2.5rem 0.5rem;
+      display: grid; grid-template-columns: 3.5rem 1fr;
+      gap: 2rem; padding: 2.5rem 0.5rem;
       border-top: 1px solid var(--border);
-      position: relative;
-      overflow: hidden;
-      transition: background 0s;
+      position: relative; overflow: hidden;
     }
     .feature-item:last-child { border-bottom: 1px solid var(--border); }
-
-    /* COLOR FILL on feature rows (button-04 adapted) */
     .feature-item::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background: var(--black);
-      transform: translateX(-101%);
-      transition: transform 0.42s cubic-bezier(0.76, 0, 0.24, 1);
-      z-index: 0;
+      content: ''; position: absolute; inset: 0;
+      background: var(--black); transform: translateX(-101%);
+      transition: transform 0.42s cubic-bezier(0.76,0,0.24,1); z-index: 0;
     }
     .feature-item:hover::before { transform: translateX(0); }
     .feature-item > * { position: relative; z-index: 1; }
@@ -457,400 +344,96 @@
     .feature-item:hover .f-title,
     .feature-item:hover .f-desc { color: var(--white); }
     .feature-item:hover .f-tag { background: var(--white); color: var(--black); }
-
-    .f-num {
-      font-family: var(--thunder);
-      font-size: 0.68rem;
-      letter-spacing: 0.15em;
-      color: var(--g300);
-      transition: color 0.3s;
-      padding-top: 0.3rem;
-    }
+    .f-num { font-family: var(--thunder); font-size: 0.68rem; letter-spacing: 0.15em; color: var(--g300); transition: color 0.3s; padding-top: 0.3rem; }
     .f-body { display: flex; flex-direction: column; gap: 0.75rem; }
     .f-header { display: flex; align-items: center; gap: 1rem; }
-    .f-title {
-      font-family: var(--thunder);
-      font-size: 1.55rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      transition: color 0.3s;
-    }
-    .f-tag {
-      font-family: var(--thunder);
-      font-size: 0.6rem;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      background: var(--black);
-      color: var(--white);
-      padding: 0.2rem 0.55rem;
-      transition: background 0.3s, color 0.3s;
-    }
-    .f-desc {
-      font-family: var(--ogg);
-      font-size: 0.95rem;
-      line-height: 1.75;
-      color: var(--g700);
-      max-width: 700px;
-      transition: color 0.3s;
-    }
+    .f-title { font-family: var(--thunder); font-size: 1.55rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; transition: color 0.3s; }
+    .f-tag { font-family: var(--thunder); font-size: 0.6rem; letter-spacing: 0.18em; text-transform: uppercase; background: var(--black); color: var(--white); padding: 0.2rem 0.55rem; transition: background 0.3s, color 0.3s; }
+    .f-desc { font-family: var(--ogg); font-size: 0.95rem; line-height: 1.75; color: var(--g700); max-width: 700px; transition: color 0.3s; }
 
-    /* ─────────────── ARCHITECTURE (black section, parallax reveal) ─────────────── */
     .arch-section {
-      padding: 7rem 2.5rem;
-      background: var(--black);
-      color: var(--white);
+      padding: 7rem 2.5rem; background: var(--black); color: var(--white);
       border-bottom: 1px solid var(--g900);
-      /* Section Transition: clip-path starts clipped, GSAP reveals on scroll */
       clip-path: inset(100% 0 0 0);
     }
     .arch-section .section-meta-num,
     .arch-section .section-meta-label { color: var(--g700); }
-
     .arch-section .section-heading { color: var(--white); margin-bottom: 5rem; }
-
-    .arch-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 0;
-    }
+    .arch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
     .arch-col { display: flex; flex-direction: column; }
-
-    .arch-item {
-      padding: 2.5rem 3rem 2.5rem 0;
-      border-bottom: 1px solid #222;
-      display: flex;
-      flex-direction: column;
-      gap: 0.8rem;
-    }
-    .arch-col:last-child .arch-item {
-      padding: 2.5rem 0 2.5rem 3rem;
-      border-left: 1px solid #222;
-    }
+    .arch-item { padding: 2.5rem 3rem 2.5rem 0; border-bottom: 1px solid #222; display: flex; flex-direction: column; gap: 0.8rem; }
+    .arch-col:last-child .arch-item { padding: 2.5rem 0 2.5rem 3rem; border-left: 1px solid #222; }
     .arch-item:last-child { border-bottom: none; }
+    .arch-item-layer { font-family: var(--thunder); font-size: 0.65rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--g700); }
+    .arch-item-title { font-family: var(--thunder); font-size: 1.4rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--white); }
+    .arch-item-desc { font-family: var(--ogg); font-size: 0.9rem; line-height: 1.75; color: var(--g500); }
 
-    .arch-item-layer {
-      font-family: var(--thunder);
-      font-size: 0.65rem;
-      letter-spacing: 0.25em;
-      text-transform: uppercase;
-      color: var(--g700);
-    }
-    .arch-item-title {
-      font-family: var(--thunder);
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--white);
-    }
-    .arch-item-desc {
-      font-family: var(--ogg);
-      font-size: 0.9rem;
-      line-height: 1.75;
-      color: var(--g500);
-    }
-
-    /* ─────────────── DATABASE SCHEMA ─────────────── */
-    .schema-grid {
-      display: grid;
-      grid-template-columns: 2fr 1fr 1.5fr;
-      gap: 2rem;
-      align-items: start;
-    }
-    .schema-table {
-      border: 1px solid var(--border);
-    }
-    .schema-table-head {
-      background: var(--black);
-      padding: 0.9rem 1.4rem;
-      border-bottom: 1px solid var(--black);
-    }
-    .schema-table-name {
-      font-family: var(--thunder);
-      font-size: 0.8rem;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--white);
-    }
-    .schema-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 1rem;
-      padding: 0.75rem 1.4rem;
-      border-bottom: 1px solid var(--g100);
-    }
+    .schema-grid { display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 2rem; align-items: start; }
+    .schema-table { border: 1px solid var(--border); }
+    .schema-table-head { background: var(--black); padding: 0.9rem 1.4rem; border-bottom: 1px solid var(--black); }
+    .schema-table-name { font-family: var(--thunder); font-size: 0.8rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--white); }
+    .schema-row { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; padding: 0.75rem 1.4rem; border-bottom: 1px solid var(--g100); }
     .schema-row:last-child { border-bottom: none; }
-    .schema-col-name {
-      font-family: var(--thunder);
-      font-size: 0.8rem;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--black);
-      white-space: nowrap;
-    }
-    .schema-col-desc {
-      font-family: var(--ogg);
-      font-size: 0.78rem;
-      color: var(--g500);
-      text-align: right;
-      line-height: 1.4;
-    }
-
-    .schema-mapping-extras {
-      padding: 1.2rem 1.4rem;
-      border-top: 1px solid var(--border);
-    }
-    .schema-mapping-label {
-      font-family: var(--thunder);
-      font-size: 0.62rem;
-      letter-spacing: 0.2em;
-      text-transform: uppercase;
-      color: var(--g300);
-      margin-bottom: 0.75rem;
-    }
-    .schema-mapping-pair {
-      display: flex;
-      justify-content: space-between;
-      padding: 0.3rem 0;
-      border-bottom: 1px solid var(--g100);
-    }
+    .schema-col-name { font-family: var(--thunder); font-size: 0.8rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--black); white-space: nowrap; }
+    .schema-col-desc { font-family: var(--ogg); font-size: 0.78rem; color: var(--g500); text-align: right; line-height: 1.4; }
+    .schema-mapping-extras { padding: 1.2rem 1.4rem; border-top: 1px solid var(--border); }
+    .schema-mapping-label { font-family: var(--thunder); font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--g300); margin-bottom: 0.75rem; }
+    .schema-mapping-pair { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid var(--g100); }
     .schema-mapping-pair:last-child { border-bottom: none; }
-    .schema-mapping-key {
-      font-family: var(--thunder);
-      font-size: 0.75rem;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      color: var(--black);
-    }
-    .schema-mapping-val {
-      font-family: var(--ogg);
-      font-size: 0.75rem;
-      color: var(--g500);
-    }
+    .schema-mapping-key { font-family: var(--thunder); font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; color: var(--black); }
+    .schema-mapping-val { font-family: var(--ogg); font-size: 0.75rem; color: var(--g500); }
 
-    /* ─────────────── TECH STACK ─────────────── */
-    .tech-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 0;
-    }
-    .tech-item {
-      padding: 2.2rem 0;
-      border-top: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-      padding-right: 2rem;
-    }
+    .tech-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+    .tech-item { padding: 2.2rem 0; border-top: 1px solid var(--border); border-right: 1px solid var(--border); padding-right: 2rem; }
     .tech-item:nth-child(3n) { border-right: none; padding-right: 0; }
-    .tech-item:nth-child(n+4) { /* no extra style needed */ }
     .tech-item:nth-child(3n+2) { padding-left: 2rem; }
     .tech-item:nth-child(3n+0) { padding-left: 2rem; }
+    .tech-name { font-family: var(--thunder); font-size: 1.35rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 0.45rem; }
+    .tech-role { font-family: var(--thunder); font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--g500); margin-bottom: 0.6rem; }
+    .tech-desc { font-family: var(--ogg); font-size: 0.88rem; line-height: 1.7; color: var(--g700); }
 
-    .tech-name {
-      font-family: var(--thunder);
-      font-size: 1.35rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-      margin-bottom: 0.45rem;
-    }
-    .tech-role {
-      font-family: var(--thunder);
-      font-size: 0.65rem;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--g500);
-      margin-bottom: 0.6rem;
-    }
-    .tech-desc {
-      font-family: var(--ogg);
-      font-size: 0.88rem;
-      line-height: 1.7;
-      color: var(--g700);
-    }
-
-    /* ─────────────── HOW TO RUN ─────────────── */
     .run-section { background: var(--g100); }
     .run-steps { display: flex; flex-direction: column; max-width: 860px; }
-
-    .run-step {
-      display: grid;
-      grid-template-columns: 3.5rem 1fr;
-      gap: 2rem;
-      padding: 2.8rem 0;
-      border-top: 1px solid var(--border);
-    }
+    .run-step { display: grid; grid-template-columns: 3.5rem 1fr; gap: 2rem; padding: 2.8rem 0; border-top: 1px solid var(--border); }
     .run-step:last-child { border-bottom: 1px solid var(--border); }
-
-    .run-num {
-      font-family: var(--thunder);
-      font-size: 0.68rem;
-      letter-spacing: 0.15em;
-      color: var(--g300);
-      padding-top: 0.3rem;
-    }
+    .run-num { font-family: var(--thunder); font-size: 0.68rem; letter-spacing: 0.15em; color: var(--g300); padding-top: 0.3rem; }
     .run-content { display: flex; flex-direction: column; gap: 0.85rem; }
-    .run-title {
-      font-family: var(--thunder);
-      font-size: 1.5rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .run-desc {
-      font-family: var(--ogg);
-      font-size: 0.95rem;
-      line-height: 1.75;
-      color: var(--g700);
-    }
-    .code-block {
-      font-family: 'Courier New', 'Courier', monospace;
-      font-size: 0.78rem;
-      line-height: 1.8;
-      background: var(--black);
-      color: var(--white);
-      padding: 1rem 1.5rem;
-      letter-spacing: 0.02em;
-      display: block;
-      margin-top: 0.25rem;
-    }
+    .run-title { font-family: var(--thunder); font-size: 1.5rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .run-desc { font-family: var(--ogg); font-size: 0.95rem; line-height: 1.75; color: var(--g700); }
+    .code-block { font-family: 'Courier New','Courier',monospace; font-size: 0.78rem; line-height: 1.8; background: var(--black); color: var(--white); padding: 1rem 1.5rem; letter-spacing: 0.02em; display: block; margin-top: 0.25rem; }
 
-    /* ─────────────── FUTURE ENHANCEMENTS ─────────────── */
-    .future-grid {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 0;
-    }
-    .future-item {
-      padding: 2rem 1.5rem 2rem 2rem;
-      border-top: 1px solid var(--border);
-      border-right: 1px solid var(--border);
-    }
+    .future-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0; }
+    .future-item { padding: 2rem 1.5rem 2rem 2rem; border-top: 1px solid var(--border); border-right: 1px solid var(--border); }
     .future-item:last-child { border-right: none; }
-    .future-num {
-      font-family: var(--thunder);
-      font-size: 0.65rem;
-      letter-spacing: 0.18em;
-      color: var(--g300);
-      margin-bottom: 0.6rem;
-    }
-    .future-text {
-      font-family: var(--ogg);
-      font-size: 0.88rem;
-      line-height: 1.65;
-      color: var(--g700);
-    }
+    .future-num { font-family: var(--thunder); font-size: 0.65rem; letter-spacing: 0.18em; color: var(--g300); margin-bottom: 0.6rem; }
+    .future-text { font-family: var(--ogg); font-size: 0.88rem; line-height: 1.65; color: var(--g700); }
 
-    /* ─────────────── FOOTER ─────────────── */
-    footer {
-      padding: 4rem 2.5rem;
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-    }
-    .footer-logo {
-      font-family: var(--thunder);
-      font-size: 0.82rem;
-      font-weight: 700;
-      letter-spacing: 0.22em;
-      text-transform: uppercase;
-    }
-    .footer-sub {
-      font-family: var(--ogg);
-      font-size: 0.75rem;
-      color: var(--g500);
-      margin-top: 0.4rem;
-      line-height: 1.6;
-    }
-    .footer-right {
-      font-family: var(--thunder);
-      font-size: 0.65rem;
-      letter-spacing: 0.18em;
-      text-transform: uppercase;
-      color: var(--g300);
-      text-align: right;
-      line-height: 2;
-    }
+    footer { padding: 4rem 2.5rem; display: flex; align-items: flex-end; justify-content: space-between; }
+    .footer-logo { font-family: var(--thunder); font-size: 0.82rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; }
+    .footer-sub { font-family: var(--ogg); font-size: 0.75rem; color: var(--g500); margin-top: 0.4rem; line-height: 1.6; }
+    .footer-right { font-family: var(--thunder); font-size: 0.65rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--g300); text-align: right; line-height: 2; }
 
-    /* ─────────────── FADE-IN UTILITY (text-reveal-02) ─────────────── */
-    .fade-up {
-      opacity: 0;
-      transform: translateY(18px);
-    }
-    .fade-in-only {
-      opacity: 0;
-    }
+    .fade-up { opacity: 0; transform: translateY(18px); }
+    .fade-in-only { opacity: 0; }
 
-    /* ─────────────── HAMBURGER MENU ─────────────── */
-    .nav-hamburger {
-      display: none;
-      flex-direction: column;
-      justify-content: center;
-      gap: 5px;
-      width: 2rem;
-      height: 2rem;
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 0;
-      z-index: 600;
-    }
-    .nav-hamburger span {
-      display: block;
-      width: 100%;
-      height: 1.5px;
-      background: var(--black);
-      transition: transform 0.3s cubic-bezier(0.76, 0, 0.24, 1), opacity 0.3s;
-    }
+    .nav-hamburger { display: none; flex-direction: column; justify-content: center; gap: 5px; width: 2rem; height: 2rem; background: none; border: none; cursor: pointer; padding: 0; z-index: 600; }
+    .nav-hamburger span { display: block; width: 100%; height: 1.5px; background: var(--black); transition: transform 0.3s cubic-bezier(0.76,0,0.24,1), opacity 0.3s; }
     .nav-hamburger.open span:nth-child(1) { transform: translateY(6.5px) rotate(45deg); }
     .nav-hamburger.open span:nth-child(2) { opacity: 0; transform: scaleX(0); }
     .nav-hamburger.open span:nth-child(3) { transform: translateY(-6.5px) rotate(-45deg); }
-
-    /* Mobile nav drawer */
-    .nav-drawer {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; right: 0; bottom: 0;
-      background: var(--white);
-      z-index: 490;
-      flex-direction: column;
-      justify-content: center;
-      align-items: flex-start;
-      padding: 6rem 2rem 3rem;
-      gap: 0;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.3s ease;
-    }
-    .nav-drawer.open {
-      opacity: 1;
-      pointer-events: all;
-    }
-    .nav-drawer ul {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 0;
-      width: 100%;
-    }
-    .nav-drawer ul li {
-      border-bottom: 1px solid var(--border);
-    }
-    .nav-drawer ul li a {
-      display: block;
-      padding: 1.2rem 0;
-      font-family: var(--thunder);
-      font-size: 2rem;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
-      color: var(--black);
-      transition: color 0.2s;
-    }
+    .nav-drawer { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--white); z-index: 490; flex-direction: column; justify-content: center; align-items: flex-start; padding: 6rem 2rem 3rem; gap: 0; opacity: 0; pointer-events: none; transition: opacity 0.3s ease; }
+    .nav-drawer.open { opacity: 1; pointer-events: all; }
+    .nav-drawer ul { list-style: none; display: flex; flex-direction: column; gap: 0; width: 100%; }
+    .nav-drawer ul li { border-bottom: 1px solid var(--border); }
+    .nav-drawer ul li a { display: block; padding: 1.2rem 0; font-family: var(--thunder); font-size: 2rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--black); transition: color 0.2s; }
     .nav-drawer ul li a:active { color: var(--g500); }
 
-    /* ─────────────── RESPONSIVE ─────────────── */
+    .Btn { width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; border: none; background-color: transparent; position: relative; border-radius: 7px; cursor: none; transition: all .3s; }
+    .svgContainer { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background-color: transparent; backdrop-filter: blur(0px); letter-spacing: 0.8px; border-radius: 10px; transition: all .3s; border: 1px solid rgba(156,156,156,0.466); }
+    .BG { position: absolute; content: ""; width: 100%; height: 100%; background: #181818; z-index: -1; border-radius: 10px; pointer-events: none; transition: all .3s; }
+    .Btn:hover .BG { transform: rotate(35deg); transform-origin: bottom; }
+    .Btn:hover .svgContainer { background-color: rgba(156,156,156,0.466); backdrop-filter: blur(4px); }
+
     @media (max-width: 900px) {
       nav { padding: 1.2rem 1.5rem; }
       .nav-links { gap: 1.2rem; }
@@ -868,235 +451,102 @@
       .future-grid { grid-template-columns: 1fr 1fr; }
       .future-item:nth-child(2n) { border-right: none; }
     }
-
     @media (max-width: 600px) {
-      /* ── Disable custom cursor on touch ── */
       body { cursor: auto; }
       #cursor { display: none; }
-
-      /* ── Nav: hide links, show hamburger + drawer ── */
       .nav-links { display: none; }
       .nav-hamburger { display: flex; }
       .nav-drawer { display: flex; }
-
-      /* ── Hero ── */
-      .hero {
-        padding: 5rem 1.2rem 3rem;
-        min-height: unset;
-        justify-content: flex-start;
-        padding-top: 7rem;
-      }
-      .hero-title {
-        font-size: clamp(2.8rem, 11vw, 5rem);
-        line-height: 0.9;
-        margin-bottom: 2.5rem;
-        word-break: break-word;
-        overflow-wrap: break-word;
-      }
-      .hero-bottom {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1.5rem;
-      }
+      .hero { padding: 5rem 1.2rem 3rem; min-height: unset; justify-content: flex-start; padding-top: 7rem; }
+      .hero-title { font-size: clamp(2.8rem, 11vw, 5rem); line-height: 0.9; margin-bottom: 2.5rem; word-break: break-word; overflow-wrap: break-word; }
+      .hero-bottom { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
       .hero-desc { font-size: 1rem; max-width: 100%; }
       .hero-stats { align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: 0.8rem 1.6rem; }
-
-      /* ── Sections ── */
       .section { padding: 3.5rem 1.2rem; }
-      .section-heading {
-        font-size: clamp(2.2rem, 10vw, 4rem);
-        margin-bottom: 2.5rem;
-        word-break: break-word;
-        overflow-wrap: break-word;
-      }
+      .section-heading { font-size: clamp(2.2rem, 10vw, 4rem); margin-bottom: 2.5rem; word-break: break-word; overflow-wrap: break-word; }
       .arch-section { padding: 3.5rem 1.2rem; }
-
-      /* ── Pipeline ── */
-      .pipeline-step {
-        grid-template-columns: 2rem 1fr;
-        gap: 1rem;
-        padding: 2rem 0;
-      }
-      .pstep-desc {
-        grid-column: 1 / -1;
-        padding-left: 3rem;
-        font-size: 0.9rem;
-      }
+      .pipeline-step { grid-template-columns: 2rem 1fr; gap: 1rem; padding: 2rem 0; }
+      .pstep-desc { grid-column: 1 / -1; padding-left: 3rem; font-size: 0.9rem; }
       .pstep-name { font-size: 1.25rem; }
-
-      /* ── Features ── */
-      .feature-item {
-        grid-template-columns: 2rem 1fr;
-        gap: 1rem;
-        padding: 1.8rem 0.3rem;
-      }
-      /* Disable hover fill effect on touch — use tap highlight instead */
+      .feature-item { grid-template-columns: 2rem 1fr; gap: 1rem; padding: 1.8rem 0.3rem; }
       .feature-item::before { display: none; }
       .f-title { font-size: 1.3rem; }
       .f-desc { font-size: 0.9rem; }
-
-      /* ── Architecture ── */
       .arch-section { clip-path: none !important; }
       .arch-item { padding: 2rem 0; }
       .arch-col:last-child .arch-item { padding: 2rem 0; border-left: none; border-top: 1px solid #222; }
-
-      /* ── Schema ── */
       .schema-grid { grid-template-columns: 1fr; gap: 1.2rem; }
       .schema-row { flex-direction: column; gap: 0.2rem; align-items: flex-start; }
       .schema-col-desc { text-align: left; }
-
-      /* ── Tech stack ── */
       .tech-grid { grid-template-columns: 1fr; }
-      .tech-item {
-        border-right: none !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-      }
-
-      /* ── How to Run ── */
-      .run-step {
-        grid-template-columns: 2rem 1fr;
-        gap: 1rem;
-        padding: 2rem 0;
-      }
+      .tech-item { border-right: none !important; padding-left: 0 !important; padding-right: 0 !important; }
+      .run-step { grid-template-columns: 2rem 1fr; gap: 1rem; padding: 2rem 0; }
       .run-title { font-size: 1.25rem; }
       .run-desc { font-size: 0.9rem; }
       .code-block { font-size: 0.72rem; padding: 0.85rem 1rem; overflow-x: auto; white-space: pre; }
-
-      /* ── Future ── */
       .future-grid { grid-template-columns: 1fr; }
       .future-item { border-right: none !important; padding: 1.5rem 0; }
-
-      /* ── Footer ── */
-      footer {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1.5rem;
-        padding: 3rem 1.2rem;
-      }
+      footer { flex-direction: column; align-items: flex-start; gap: 1.5rem; padding: 3rem 1.2rem; }
       .footer-right { text-align: left; }
-
-      /* ── Buttons: increase tap targets ── */
-      .btn-slide, .btn-fill {
-        padding: 0.75rem 1.6rem;
-        height: auto;
-        min-height: 2.75rem;
-      }
+      .btn-slide, .btn-fill { padding: 0.75rem 1.6rem; height: auto; min-height: 2.75rem; }
     }
-
-    /* Very small phones */
     @media (max-width: 380px) {
       .hero-title { font-size: clamp(2.4rem, 10vw, 3.5rem); }
       .section-heading { font-size: clamp(1.9rem, 9vw, 3rem); }
     }
-    .Btn {
-  width: 45px;
-  height: 45px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background-color: transparent;
-  position: relative;
-  /* overflow: hidden; */
-  border-radius: 7px;
-  cursor: none;
-  transition: all .3s;
-}
-
-.svgContainer {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: transparent;
-  backdrop-filter: blur(0px);
-  letter-spacing: 0.8px;
-  border-radius: 10px;
-  transition: all .3s;
-  border: 1px solid rgba(156, 156, 156, 0.466);
-}
-
-.BG {
-  position: absolute;
-  content: "";
-  width: 100%;
-  height: 100%;
-  background: #181818;
-  z-index: -1;
-  border-radius: 10px;
-  pointer-events: none;
-  transition: all .3s;
-}
-
-.Btn:hover .BG {
-  transform: rotate(35deg);
-  transform-origin: bottom;
-}
-
-.Btn:hover .svgContainer {
-  background-color: rgba(156, 156, 156, 0.466);
-  backdrop-filter: blur(4px);
-}
   </style>
 </head>
 <body>
 
-  <!-- PAGE TRANSITION OVERLAY (page-transition-01 + page-transition-02) -->
+  <!-- ─── LOADING SCREEN ─── -->
+  <div id="loading-screen">
+    <div id="loading-logo">MAIL<span>SYS</span></div>
+    <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+    <div id="loading-status"></div>
+  </div>
+
+  <!-- PAGE TRANSITION OVERLAY -->
   <div id="page-overlay"></div>
 
   <!-- CUSTOM CURSOR -->
   <div id="cursor"></div>
 
-  <!-- ─────────────── NAV ─────────────── -->
+  <!-- VIDEO POPUP — placed inside body, not after closing script tags -->
+  <div id="vid-popup">
+    <div id="vid-popup-screen">
+      <canvas id="vid-popup-canvas"></canvas>
+      <video id="vid-popup-video" autoplay muted loop playsinline></video>
+    </div>
+    <div id="vid-popup-bar">
+      <span id="vid-popup-name">DEMO PREVIEW</span>
+      <span id="vid-popup-indicator">
+        <span id="vid-popup-dot"></span>
+      </span>
+    </div>
+  </div>
+
+  <!-- ─── NAV ─── -->
   <nav id="site-nav">
     <a href="#hero" class="nav-logo">MAIL<span>SYS</span></a>
     <button class="nav-hamburger" id="nav-hamburger" aria-label="Toggle menu" aria-expanded="false">
       <span></span><span></span><span></span>
     </button>
     <ul class="nav-links">
-      <li>
-        <a href="#pipeline" class="btn-arrow">
-          Pipeline <span class="arrow">&nbsp;→</span>
-        </a>
-      </li>
-      <li>
-        <a href="#features" class="btn-arrow">
-          Features <span class="arrow">&nbsp;→</span>
-        </a>
-      </li>
-            <li>
-        <a href="#architecture" class="btn-arrow">
-          Architecture <span class="arrow">&nbsp;→</span>
-        </a>
-      </li>
-      <li>
-        <a href="#schema" class="btn-arrow">
-          Schema <span class="arrow">&nbsp;→</span>
-        </a>
-      </li>
-
-      <li>
-        <a href="#stack" class="btn-arrow">
-          Technologies <span class="arrow">&nbsp;→</span>
-        </a>
-      </li>
-      <li>
-        <a href="#run" class="btn-fill">Get Running</a>
-      </li>
-      <li>
-        <a href="#future" class="plan-button">
-          Planned
-        </a>
-      </li>
+      <li><a href="#pipeline" class="btn-arrow">Pipeline <span class="arrow">&nbsp;→</span></a></li>
+      <li><a href="#features" class="btn-arrow">Features <span class="arrow">&nbsp;→</span></a></li>
+      <li><a href="#architecture" class="btn-arrow">Architecture <span class="arrow">&nbsp;→</span></a></li>
+      <li><a href="#schema" class="btn-arrow">Schema <span class="arrow">&nbsp;→</span></a></li>
+      <li><a href="#stack" class="btn-arrow">Technologies <span class="arrow">&nbsp;→</span></a></li>
+      <li><a href="#run" class="btn-fill">Get Running</a></li>
+      <li><a href="#future" class="plan-button">Planned</a></li>
       <a href="https://github.com/RealAdd97/MAILSYS" target="_blank">
-<button class="Btn">
- <span class="svgContainer">
-   <svg fill="white" viewBox="0 0 496 512" height="1.6em"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"></path></svg>
- </span>
- <span class="BG"></span>
-</button></a>
+        <button class="Btn">
+          <span class="svgContainer">
+            <svg fill="white" viewBox="0 0 496 512" height="1.6em"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"></path></svg>
+          </span>
+          <span class="BG"></span>
+        </button>
+      </a>
     </ul>
   </nav>
 
@@ -1110,987 +560,650 @@
       <li><a href="#stack" class="drawer-link">Technologies</a></li>
       <li><a href="#run" class="drawer-link">Get Running</a></li>
       <li><a href="#future" class="drawer-link">Planned</a></li>
-      <a href="https://github.com/RealAdd97/MAILSYS" target="_blank">
-<button class="Btn">
- <span class="svgContainer">
-   <svg fill="white" viewBox="0 0 496 512" height="1.6em"><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"></path></svg>
- </span>
- <span class="BG"></span>
-</button></a>
     </ul>
   </div>
 
-  <!-- ─────────────── HERO ─────────────── -->
+  <!-- ─── HERO ─── -->
   <section class="hero" id="hero">
-
     <div class="hero-eyebrow">
       <span>AI Email Ticketing Service | Automated Support Pipeline</span>
     </div>
-
-    <!-- Slide-Up Text Reveal (text-reveal-01) -->
     <h1 class="hero-title">
       <div class="line"><span>Intelligent</span></div>
       <div class="line"><span>Support,</span></div>
       <div class="line"><span>Automated.</span></div>
     </h1>
-
     <div class="hero-bottom">
-      <!-- Fade-In Text Reveal (text-reveal-02) -->
       <p class="hero-desc">
         A continuously running AI pipeline that fetches support emails from Gmail, classifies them
         with a local Llama 3 model, routes them to the right team lead, and sends knowledge-backed
         resolution emails.
       </p>
-
+    </div>
   </section>
 
-  <!-- ─────────────── MARQUEE ─────────────── -->
+  <!-- ─── MARQUEE ─── -->
   <div class="marquee-section" aria-hidden="true">
     <div class="marquee-track">
-      <span class="marquee-item">Email Ingestion</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">AI Categorization</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Knowledge Base Search</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Team Lead Routing</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Confidence Scoring</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Solution Emails</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Ticket Notes</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Duplicate Detection</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <!-- Duplicate for seamless loop -->
-      <span class="marquee-item">Email Ingestion</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">AI Categorization</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Knowledge Base Search</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Team Lead Routing</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Confidence Scoring</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Solution Emails</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Ticket Notes</span>
-      <span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Duplicate Detection</span>
-      <span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Email Ingestion</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">AI Categorization</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Knowledge Base Search</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Team Lead Routing</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Confidence Scoring</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Solution Emails</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Ticket Notes</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Duplicate Detection</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Email Ingestion</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">AI Categorization</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Knowledge Base Search</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Team Lead Routing</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Confidence Scoring</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Solution Emails</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Ticket Notes</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Duplicate Detection</span><span class="marquee-item marquee-sep">/</span>
     </div>
   </div>
 
-  <!-- ─────────────── PIPELINE ─────────────── -->
+  <!-- ─── PIPELINE ─── -->
   <section class="section" id="pipeline">
-    <div class="section-meta">
-      <span class="section-meta-num">01</span>
-      <span class="section-meta-label">How it works</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>The Pipeline</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">01</span><span class="section-meta-label">How it works</span></div>
+    <div class="section-heading fade-up"><span>The Pipeline</span></div>
     <div class="pipeline-steps">
-
       <div class="pipeline-step">
         <span class="pstep-num">01</span>
         <div class="pstep-name">Email Ingestion</div>
-        <div class="pstep-desc">
-          Connects to Gmail via IMAP over SSL, authenticating with an app password sourced from
-          <code style="font-family:monospace;font-size:0.85em">config.yaml</code>. Searches for
-          UNSEEN messages received since the current date. Parses the full email, handling multipart MIME structures correctly before any further processing.
-          Each email is marked as <code style="font-family:monospace;font-size:0.85em">\Seen</code>
-          immediately after being read, preventing any duplicate processing across restarts or crashes.
-        </div>
+        <div class="pstep-desc">Connects to Gmail via IMAP over SSL, authenticating with an app password sourced from <code style="font-family:monospace;font-size:0.85em">config.yaml</code>. Searches for UNSEEN messages received since the current date. Parses the full email, handling multipart MIME structures correctly before any further processing. Each email is marked as <code style="font-family:monospace;font-size:0.85em">\Seen</code> immediately after being read, preventing any duplicate processing across restarts or crashes.</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">02</span>
         <div class="pstep-name">Ticket Generation</div>
-        <div class="pstep-desc">
-          A unique Ticket ID is generated in the format <code style="font-family:monospace;font-size:0.85em">INC-2026-{1000–9999}</code> using a random
-          integer in the range. The ticket is immediately inserted into SQL Server with a status of
-          "New". An async AI processing task is dispatched to the thread pool, so email
-          ingestion never waits for AI inference to complete.
-        </div>
+        <div class="pstep-desc">A unique Ticket ID is generated in the format <code style="font-family:monospace;font-size:0.85em">INC-2026-{1000–9999}</code> using a random integer in the range. The ticket is immediately inserted into SQL Server with a status of "New". An async AI processing task is dispatched to the thread pool, so email ingestion never waits for AI inference to complete.</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">03</span>
         <div class="pstep-name">Knowledge Base Search</div>
-        <div class="pstep-desc">
-          Before calling the AI model, the system searches the local <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code>
-          directory for relevant corporate policy context. A two-stage hybrid approach is used: first,
-          Ollama semantically extracts the topic from the ticket content and matches it against
-          policy files. If semantic search yields no results, a keyword fallback matches terms
-          longer than four characters against all documents so context is always retrieved.
-        </div>
+        <div class="pstep-desc">Before calling the AI model, the system searches the local <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge_base/</span> directory for relevant corporate policy context. A two-stage hybrid approach is used: first, Ollama semantically extracts the topic from the ticket content and matches it against policy files. If semantic search yields no results, a keyword fallback matches terms longer than four characters against all documents so context is always retrieved.</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">04</span>
         <div class="pstep-name">AI Processing</div>
-        <div class="pstep-desc">
-          The ticket content and retrieved knowledge base context are combined into a structured
-          prompt, sent to Llama 3 via the local Ollama client. The system prompt strictly instructs
-          the model to return only valid JSON. The response is parsed for four fields:
-          <em>category</em>, <em>subcategory</em>, <em>summary</em>, and <em>confidence</em>
-          (0.0–1.0). Robust JSON cleaning handles markdown code fences and malformed outputs, with
-          regex-based fallback extraction if parsing fails entirely.
-        </div>
+        <div class="pstep-desc">The ticket content and retrieved <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base</span> context are combined into a structured prompt, sent to Llama 3 via the local Ollama client. The system prompt strictly instructs the model to return only valid JSON. The response is parsed for four fields: <em>category</em>, <em>subcategory</em>, <em>summary</em>, and <em>confidence</em> (0.0–1.0). Robust JSON cleaning handles markdown code fences and malformed outputs, with regex-based fallback extraction if parsing fails entirely.</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">05</span>
         <div class="pstep-name">Team Lead Routing</div>
-        <div class="pstep-desc">
-          The AI-predicted category is used to query the
-          <code style="font-family:monospace;font-size:0.85em">TeamLeadMapping</code> table in SQL Server.
-          The appropriate team lead identifier is retrieved and written to the ticket record.
-          If no mapping is found for the predicted category, the system defaults to
-          <code style="font-family:monospace;font-size:0.85em">TL_GENERAL</code> to ensure every ticket
-          is always assigned. The ticket status is then updated from "New" to "Processed".
-        </div>
+        <div class="pstep-desc">The AI-predicted category is used to query the <code style="font-family:monospace;font-size:0.85em">TeamLeadMapping</code> table in SQL Server. The appropriate team lead identifier is retrieved and written to the ticket record. If no mapping is found for the predicted category, the system defaults to <code style="font-family:monospace;font-size:0.85em">TL_GENERAL</code> to ensure every ticket is always assigned. The ticket status is then updated from "New" to "Processed".</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">06</span>
         <div class="pstep-name">Notifications and Solution</div>
-        <div class="pstep-desc">
-          When the confidence score meets or exceeds the 0.9 threshold, two emails are dispatched
-          via Gmail SMTP with STARTTLS on port 587. First, a high-confidence alert is sent to the
-          configured <code style="font-family:monospace;font-size:0.85em">notification_email</code>
-          address. Second, a solution email incorporating extracted knowledge base content is sent
-          directly to the original sender. Both emails are only triggered above the threshold to
-          minimize noise from low-confidence classifications.
-        </div>
+        <div class="pstep-desc">When the confidence score meets or exceeds the 0.9 threshold, two emails are dispatched via Gmail SMTP with STARTTLS on port 587. First, a high-confidence alert is sent to the configured <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification_email</span> address. Second, a solution email incorporating extracted <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base</span> content is sent directly to the original sender. Both emails are only triggered above the threshold to minimize noise from low-confidence classifications.</div>
       </div>
-
       <div class="pipeline-step">
         <span class="pstep-num">07</span>
         <div class="pstep-name">Ticket Notes and Replies</div>
-        <div class="pstep-desc">
-          System notes are automatically written to the
-          <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table after each
-          key event: when a solution email is sent, and when the ticket is fully processed and
-          resolved. When a user replies to a solution email, the reply is detected by parsing the
-          subject for the original Ticket ID pattern. Instead of creating a new ticket, the reply
-          body is stored as a <em>UserReply</em> note to preserve the conversation thread without
-          generating duplicate tickets.
-        </div>
+        <div class="pstep-desc">System notes are automatically written to the <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table after each key event: when a solution email is sent, and when the ticket is fully processed and resolved. When a user replies to a solution email, the reply is detected by parsing the subject for the original Ticket ID pattern. Instead of creating a new ticket, the reply body is stored as a <em>UserReply</em> note to preserve the conversation thread without generating duplicate tickets.</div>
       </div>
-
     </div>
   </section>
 
-  <!-- ─────────────── FEATURES ─────────────── -->
+  <!-- ─── FEATURES ─── -->
   <section class="section" id="features">
-    <div class="section-meta">
-      <span class="section-meta-num">02</span>
-      <span class="section-meta-label">Core Capabilities</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>Features</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">02</span><span class="section-meta-label">Core Capabilities</span></div>
+    <div class="section-heading fade-up"><span>Features</span></div>
     <div class="feature-list">
-
-      <div class="feature-item">
-        <span class="f-num">01</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Continuous Polling</div>
-            <span class="f-tag">Core</span>
-          </div>
-          <div class="f-desc">
-            The pipeline runs indefinitely, checking for new emails in a tight loop. When no
-            unread messages are found, it sleeps for a configurable interval (default 10 s) before
-            polling again. IMAP IDLE is partially supported with a configurable timeout, falling
-            back to standard polling. Press Ctrl+C to trigger a clean KeyboardInterrupt shutdown.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">02</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Local AI | No API Keys</div>
-            <span class="f-tag">AI</span>
-          </div>
-          <div class="f-desc">
-            All inference runs locally via Ollama. No email content is sent to external services.
-            The Llama 3 model classifies tickets into four categories <em> (Payroll/Salary,
-            Finance/Invoice, Technology/VPN, and HR/Leave) </em> and generates a concise one-sentence
-            summary. Confidence is returned as a float between 0 and 1, driving the automation
-            threshold logic downstream.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">03</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Hybrid Knowledge Base Search</div>
-            <span class="f-tag">AI</span>
-          </div>
-          <div class="f-desc">
-            Corporate SOPs in <code style="font-family:monospace;font-size:0.85em">knowledge_base/*.txt</code>
-            are retrieved in two stages. Ollama first extracts the semantic topic from the ticket
-            and checks which policy documents mention it. If this yields nothing, keyword extraction
-            (only terms longer than four characters) falls back to direct document matching. This
-            two-stage approach avoids needing a vector database while still providing meaningful
-            context for the AI model.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">04</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Confidence-Based Automation</div>
-            <span class="f-tag">Logic</span>
-          </div>
-          <div class="f-desc">
-            The system behaves differently depending on how certain the AI is. When confidence
-            reaches or exceeds 0.9, it acts immediately: notifying the operations team and sending
-            the sender a solution email. Below that threshold, the ticket is still categorized and
-            routed, but no automated email is sent. This prevents
-            low-quality resolutions from being sent automatically.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">05</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Concurrent Thread Pool</div>
-            <span class="f-tag">Concurrency</span>
-          </div>
-          <div class="f-desc">
-            Email ingestion runs synchronously on the main thread while AI enrichment tasks are
-            dispatched to a <code style="font-family:monospace;font-size:0.85em">ThreadPoolExecutor</code>.
-            The default pool size of 4 allows multiple tickets to be enriched simultaneously.
-            Each async task creates its own isolated database connection to avoid locking conflicts
-            and shared state. Pool size is configurable via
-            <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code> in
-            <code style="font-family:monospace;font-size:0.85em">config.yaml</code>.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">06</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Internal Ticket Notes</div>
-            <span class="f-tag">Tracking</span>
-          </div>
-          <div class="f-desc">
-            A dedicated <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table
-            tracks the full lifecycle of each ticket. Three note types are supported:
-            <em>UserReply</em> for email thread responses from the sender, <em>SystemNote</em> for
-            automated events such as "Solution sent" and "Ticket resolved", and
-            <em>AgentComment</em> reserved for future manual agent input. Each note stores the
-            author (email address or system identifier) and a precise timestamp.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">07</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Duplicate Detection</div>
-            <span class="f-tag">Safety</span>
-          </div>
-          <div class="f-desc">
-            When a user replies to a solution email, the subject line is parsed for the Ticket ID
-            pattern (<code style="font-family:monospace;font-size:0.85em">INC-2026-XXXX</code>).
-            If found, no new ticket is created. Instead, the reply body is stored as a
-            <em>UserReply</em> note against the original ticket. This prevents the inbox from
-            generating duplicate tickets on every email thread reply, keeping the database clean.
-          </div>
-        </div>
-      </div>
-
-      <div class="feature-item">
-        <span class="f-num">08</span>
-        <div class="f-body">
-          <div class="f-header">
-            <div class="f-title">Layered Error Handling</div>
-            <span class="f-tag">Resilience</span>
-          </div>
-          <div class="f-desc">
-            Every external dependency <em> (IMAP, SQL Server, Ollama, and SMTP) </em> is wrapped in its
-            own try/except block with structured logging at every key step. JSON parsing includes
-            two-layer fallback: first strip markdown fences and re-parse; then use regex extraction
-            to pull the four expected fields. Database connections are always closed in finally
-            blocks. No single failure cascades into a full shutdown so the pipeline keeps running.
-          </div>
-        </div>
-      </div>
-
+      <div class="feature-item"><span class="f-num">01</span><div class="f-body"><div class="f-header"><div class="f-title">Continuous Polling</div><span class="f-tag">Core</span></div><div class="f-desc">The pipeline runs indefinitely, checking for new emails in a tight loop. When no unread messages are found, it sleeps for a configurable interval (default 10 s) before polling again. IMAP IDLE is partially supported with a configurable timeout, falling back to standard polling. Press Ctrl+C to trigger a clean KeyboardInterrupt shutdown.</div></div></div>
+      <div class="feature-item"><span class="f-num">02</span><div class="f-body"><div class="f-header"><div class="f-title">Local AI | No API Keys</div><span class="f-tag">AI</span></div><div class="f-desc">All inference runs locally via Ollama. No email content is sent to external services. The Llama 3 model classifies tickets into four categories <em>(Payroll/Salary, Finance/Invoice, Technology/VPN, and HR/Leave)</em> and generates a concise one-sentence summary. Confidence is returned as a float between 0 and 1, driving the automation threshold logic downstream.</div></div></div>
+      <div class="feature-item"><span class="f-num">03</span><div class="f-body"><div class="f-header"><div class="f-title">Hybrid Knowledge Base Search</div><span class="f-tag">AI</span></div><div class="f-desc">Corporate SOPs in <code style="font-family:monospace;font-size:0.85em">knowledge_base/*.txt</code> are retrieved in two stages. Ollama first extracts the semantic topic from the ticket and checks which policy documents mention it. If this yields nothing, keyword extraction (only terms longer than four characters) falls back to direct document matching. This two-stage approach avoids needing a vector database while still providing meaningful context for the AI model.</div></div></div>
+      <div class="feature-item"><span class="f-num">04</span><div class="f-body"><div class="f-header"><div class="f-title">Confidence-Based Automation</div><span class="f-tag">Logic</span></div><div class="f-desc">The system behaves differently depending on how certain the AI is. When confidence reaches or exceeds 0.9, it acts immediately: notifying the operations team and sending the sender a solution email. Below that threshold, the ticket is still categorized and routed, but no automated email is sent. This prevents low-quality resolutions from being sent automatically.</div></div></div>
+      <div class="feature-item"><span class="f-num">05</span><div class="f-body"><div class="f-header"><div class="f-title">Concurrent Thread Pool</div><span class="f-tag">Concurrency</span></div><div class="f-desc">Email ingestion runs synchronously on the main thread while AI enrichment tasks are dispatched to a <code style="font-family:monospace;font-size:0.85em">ThreadPoolExecutor</code>. The default pool size of 4 allows multiple tickets to be enriched simultaneously. Each async task creates its own isolated database connection to avoid locking conflicts and shared state. Pool size is configurable via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code> in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>.</div></div></div>
+      <div class="feature-item"><span class="f-num">06</span><div class="f-body"><div class="f-header"><div class="f-title">Internal Ticket Notes</div><span class="f-tag">Tracking</span></div><div class="f-desc">A dedicated <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table tracks the full lifecycle of each ticket. Three note types are supported: <em>UserReply</em> for email thread responses from the sender, <em>SystemNote</em> for automated events such as "Solution sent" and "Ticket resolved", and <em>AgentComment</em> reserved for future manual agent input. Each note stores the author (email address or system identifier) and a precise timestamp.</div></div></div>
+      <div class="feature-item"><span class="f-num">07</span><div class="f-body"><div class="f-header"><div class="f-title">Duplicate Detection</div><span class="f-tag">Safety</span></div><div class="f-desc">When a user replies to a solution email, the subject line is parsed for the Ticket ID pattern (<code style="font-family:monospace;font-size:0.85em">INC-2026-XXXX</code>). If found, no new ticket is created. Instead, the reply body is stored as a <em>UserReply</em> note against the original ticket. This prevents the inbox from generating duplicate tickets on every email thread reply, keeping the database clean.</div></div></div>
+      <div class="feature-item"><span class="f-num">08</span><div class="f-body"><div class="f-header"><div class="f-title">Layered Error Handling</div><span class="f-tag">Resilience</span></div><div class="f-desc">Every external dependency <em>(IMAP, SQL Server, Ollama, and SMTP)</em> is wrapped in its own try/except block with structured logging at every key step. JSON parsing includes two-layer fallback: first strip markdown fences and re-parse; then use regex extraction to pull the four expected fields. Database connections are always closed in finally blocks. No single failure cascades into a full shutdown so the pipeline keeps running.</div></div></div>
     </div>
   </section>
 
-  <!-- ─────────────── ARCHITECTURE (clip-path section transition) ─────────────── -->
+  <!-- ─── ARCHITECTURE ─── -->
   <section class="arch-section" id="architecture">
-    <div class="section-meta">
-      <span class="section-meta-num">03</span>
-      <span class="section-meta-label">System Components</span>
-    </div>
-
-    <div class="section-heading">
-      <span>Architecture</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">03</span><span class="section-meta-label">System Components</span></div>
+    <div class="section-heading"><span>Architecture</span></div>
     <div class="arch-grid">
       <div class="arch-col">
         <div class="arch-item">
           <div class="arch-item-layer">Layer 01</div>
           <div class="arch-item-title">IMAP Email Ingestion</div>
-          <div class="arch-item-desc">
-            Uses Python's standard <code style="font-family:monospace;font-size:0.85em">imaplib</code>
-            over SSL to connect to <code style="font-family:monospace;font-size:0.85em">imap.gmail.com</code>.
-            Reads email credentials and app password from config. Searches for UNSEEN messages since
-            today's date. The <code style="font-family:monospace;font-size:0.85em">email</code>
-            standard library handles MIME parsing, including multipart messages with plain text and
-            HTML parts. Marks emails as <code style="font-family:monospace;font-size:0.85em">\Seen</code>
-            atomically after successful ticket insertion.
-          </div>
+          <div class="arch-item-desc">Uses Python's standard <code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL to connect to <code style="font-family:monospace;font-size:0.85em">imap.gmail.com</code>. Reads email credentials and app password from config. Searches for UNSEEN messages since today's date. The <code style="font-family:monospace;font-size:0.85em">email</code> standard library handles MIME parsing, including multipart messages with plain text and HTML parts. Marks emails as <code style="font-family:monospace;font-size:0.85em">\Seen</code> atomically after successful ticket insertion.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 02</div>
           <div class="arch-item-title">SQL Server Database</div>
-          <div class="arch-item-desc">
-            Connects via <code style="font-family:monospace;font-size:0.85em">pyodbc</code> to a local
-            SQLEXPRESS instance. The connection string is read from config. Three tables handle all
-            persistence: <em>Tickets</em> for the main record, <em>TeamLeadMapping</em> for routing
-            logic, and <em>TicketNotes</em> for the note thread. Each AI processing task creates its
-            own database connection to avoid cross-thread locking and ensure safe concurrent writes.
-          </div>
+          <div class="arch-item-desc">Connects via <code style="font-family:monospace;font-size:0.85em">pyodbc</code> to a local SQLEXPRESS instance. The connection string is read from config. Three tables handle all persistence: <em>Tickets</em> for the main record, <em>TeamLeadMapping</em> for routing logic, and <em>TicketNotes</em> for the note thread. Each AI processing task creates its own database connection to avoid cross-thread locking and ensure safe concurrent writes.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 03</div>
           <div class="arch-item-title">Knowledge Base</div>
-          <div class="arch-item-desc">
-            Plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files in the
-            <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory
-            contain corporate SOPs organized by domain: HR leave policy, payroll procedures, VPN
-            and technology SOPs, and finance invoice workflows. No vector database or external
-            embedding service is required.The hybrid semantic and keyword search keeps the system
-            fully self-contained and portable.
-          </div>
+          <div class="arch-item-desc">Plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files in the <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory contain corporate SOPs organized by domain: HR leave policy, payroll procedures, VPN and technology SOPs, and finance invoice workflows. No vector database or external embedding service is required. The hybrid semantic and keyword search keeps the system fully self-contained and portable.</div>
         </div>
       </div>
       <div class="arch-col">
         <div class="arch-item">
           <div class="arch-item-layer">Layer 04</div>
           <div class="arch-item-title">Ollama Llama 3</div>
-          <div class="arch-item-desc">
-            The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client sends
-            structured prompts to the locally-running Llama 3 model. The system message strictly
-            instructs JSON-only output. The returned object is cleaned, parsed, and validated for
-            the four expected fields. Fallback regex extraction targets each field individually if
-            the full JSON parse fails, ensuring a category and confidence score are always extracted
-            even from partially malformed model output.
-          </div>
+          <div class="arch-item-desc">The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client sends structured prompts to the locally-running Llama 3 model. The system message strictly instructs JSON-only output. The returned object is cleaned, parsed, and validated for the four expected fields. Fallback regex extraction targets each field individually if the full JSON parse fails, ensuring a category and confidence score are always extracted even from partially malformed model output.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 05</div>
           <div class="arch-item-title">SMTP Notifications</div>
-          <div class="arch-item-desc">
-            Gmail SMTP with STARTTLS on port 587. Two distinct email types are sent when
-            confidence ≥ 0.9: an operations alert to the
-            <code style="font-family:monospace;font-size:0.85em">notification_email</code> address
-            configured in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>,
-            and a solution email to the original ticket sender. The solution email embeds
-            relevant extracted content from the matched knowledge base files, giving the sender
-            a concrete answer drawn from official policy.
-          </div>
+          <div class="arch-item-desc">Gmail SMTP with STARTTLS on port 587. Two distinct email types are sent when confidence ≥ 0.9: an operations alert to the <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification_email</span> address configured in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>, and a solution email to the original ticket sender. The solution email embeds relevant extracted content from the  matched <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base files</span>, giving the sender a concrete answer drawn from official policy.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 06</div>
           <div class="arch-item-title">Thread Pool Executor</div>
-          <div class="arch-item-desc">
-            Python's <code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code>
-            handles all AI enrichment asynchronously. The main ingestion loop submits a task and
-            immediately continues polling; it never blocks waiting for Ollama. The pool defaults
-            to 4 workers but can be tuned via
-            <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code>.
-            Each worker gets its own database connection, preventing shared-state issues and
-            ensuring safe parallel writes across all concurrent tasks.
-          </div>
+          <div class="arch-item-desc">Python's <code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code> handles all AI enrichment asynchronously. The main ingestion loop submits a task and immediately continues polling; it never blocks waiting for Ollama. The pool defaults to 4 workers but can be tuned via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code>. Each worker gets its own database connection, preventing shared-state issues and ensuring safe parallel writes across all concurrent tasks.</div>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ─────────────── DATABASE SCHEMA ─────────────── -->
+  <!-- ─── DATABASE SCHEMA ─── -->
   <section class="section" id="schema">
-    <div class="section-meta">
-      <span class="section-meta-num">04</span>
-      <span class="section-meta-label">Data Model</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>Database Schema</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">04</span><span class="section-meta-label">Data Model</span></div>
+    <div class="section-heading fade-up"><span>Database Schema</span></div>
     <div class="schema-grid">
-
-      <!-- Tickets table -->
       <div class="schema-table">
-        <div class="schema-table-head">
-          <div class="schema-table-name">Tickets</div>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">TicketID</span>
-          <span class="schema-col-desc">INC-2026-{1000–9999}</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Subject</span>
-          <span class="schema-col-desc">Email subject line</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Body</span>
-          <span class="schema-col-desc">Full parsed email body</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Sender</span>
-          <span class="schema-col-desc">Sender email address</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Status</span>
-          <span class="schema-col-desc">New → Processed</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Category</span>
-          <span class="schema-col-desc">AI-derived classification</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Subcategory</span>
-          <span class="schema-col-desc">AI-derived sub-type</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Summary</span>
-          <span class="schema-col-desc">AI one-sentence summary</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">AssignedTeamLead</span>
-          <span class="schema-col-desc">Mapped from category</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Notified</span>
-          <span class="schema-col-desc">High-confidence sent flag</span>
-        </div>
+        <div class="schema-table-head"><div class="schema-table-name">Tickets</div></div>
+        <div class="schema-row"><span class="schema-col-name">TicketID</span><span class="schema-col-desc">INC-2026-{1000–9999}</span></div>
+        <div class="schema-row"><span class="schema-col-name">Subject</span><span class="schema-col-desc">Email subject line</span></div>
+        <div class="schema-row"><span class="schema-col-name">Body</span><span class="schema-col-desc">Full parsed email body</span></div>
+        <div class="schema-row"><span class="schema-col-name">Sender</span><span class="schema-col-desc">Sender email address</span></div>
+        <div class="schema-row"><span class="schema-col-name">Status</span><span class="schema-col-desc">New → Processed</span></div>
+        <div class="schema-row"><span class="schema-col-name">Category</span><span class="schema-col-desc">AI-derived classification</span></div>
+        <div class="schema-row"><span class="schema-col-name">Subcategory</span><span class="schema-col-desc">AI-derived sub-type</span></div>
+        <div class="schema-row"><span class="schema-col-name">Summary</span><span class="schema-col-desc">AI one-sentence summary</span></div>
+        <div class="schema-row"><span class="schema-col-name">AssignedTeamLead</span><span class="schema-col-desc">Mapped from category</span></div>
+        <div class="schema-row"><span class="schema-col-name">Notified</span><span class="schema-col-desc">High-confidence sent flag</span></div>
       </div>
-
-      <!-- TeamLeadMapping table -->
       <div class="schema-table">
-        <div class="schema-table-head">
-          <div class="schema-table-name">TeamLeadMapping</div>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">Category</span>
-          <span class="schema-col-desc">Category name</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">TeamLead</span>
-          <span class="schema-col-desc">Lead identifier</span>
-        </div>
+        <div class="schema-table-head"><div class="schema-table-name">TeamLeadMapping</div></div>
+        <div class="schema-row"><span class="schema-col-name">Category</span><span class="schema-col-desc">Category name</span></div>
+        <div class="schema-row"><span class="schema-col-name">TeamLead</span><span class="schema-col-desc">Lead identifier</span></div>
         <div class="schema-mapping-extras">
           <div class="schema-mapping-label">Sample Mappings</div>
-          <div class="schema-mapping-pair">
-            <span class="schema-mapping-key">Payroll/Salary</span>
-            <span class="schema-mapping-val">TL_PAYROLL</span>
-          </div>
-          <div class="schema-mapping-pair">
-            <span class="schema-mapping-key">Finance/Invoice</span>
-            <span class="schema-mapping-val">TL_FINANCE</span>
-          </div>
-          <div class="schema-mapping-pair">
-            <span class="schema-mapping-key">Technology/VPN</span>
-            <span class="schema-mapping-val">TL_TECH</span>
-          </div>
-          <div class="schema-mapping-pair">
-            <span class="schema-mapping-key">HR/Leave</span>
-            <span class="schema-mapping-val">TL_HR</span>
-          </div>
-          <div class="schema-mapping-pair">
-            <span class="schema-mapping-key">Unmatched</span>
-            <span class="schema-mapping-val">TL_GENERAL</span>
-          </div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Payroll/Salary</span><span class="schema-mapping-val">TL_PAYROLL</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Finance/Invoice</span><span class="schema-mapping-val">TL_FINANCE</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Technology/VPN</span><span class="schema-mapping-val">TL_TECH</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">HR/Leave</span><span class="schema-mapping-val">TL_HR</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Unmatched</span><span class="schema-mapping-val">TL_GENERAL</span></div>
         </div>
       </div>
-
-      <!-- TicketNotes table -->
       <div class="schema-table">
-        <div class="schema-table-head">
-          <div class="schema-table-name">TicketNotes</div>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">NoteID</span>
-          <span class="schema-col-desc">Auto-increment PK</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">TicketID</span>
-          <span class="schema-col-desc">FK → Tickets</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">NoteType</span>
-          <span class="schema-col-desc">UserReply · SystemNote · AgentComment</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">NoteBody</span>
-          <span class="schema-col-desc">Note text content</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">CreatedAt</span>
-          <span class="schema-col-desc">Timestamp</span>
-        </div>
-        <div class="schema-row">
-          <span class="schema-col-name">CreatedBy</span>
-          <span class="schema-col-desc">Email or system name</span>
-        </div>
+        <div class="schema-table-head"><div class="schema-table-name">TicketNotes</div></div>
+        <div class="schema-row"><span class="schema-col-name">NoteID</span><span class="schema-col-desc">Auto-increment PK</span></div>
+        <div class="schema-row"><span class="schema-col-name">TicketID</span><span class="schema-col-desc">FK → Tickets</span></div>
+        <div class="schema-row"><span class="schema-col-name">NoteType</span><span class="schema-col-desc">UserReply · SystemNote · AgentComment</span></div>
+        <div class="schema-row"><span class="schema-col-name">NoteBody</span><span class="schema-col-desc">Note text content</span></div>
+        <div class="schema-row"><span class="schema-col-name">CreatedAt</span><span class="schema-col-desc">Timestamp</span></div>
+        <div class="schema-row"><span class="schema-col-name">CreatedBy</span><span class="schema-col-desc">Email or system name</span></div>
       </div>
-
     </div>
   </section>
 
-  <!-- ─────────────── TECH STACK ─────────────── -->
+  <!-- ─── TECH STACK ─── -->
   <section class="section" id="stack">
-    <div class="section-meta">
-      <span class="section-meta-num">05</span>
-      <span class="section-meta-label">Stack</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>Technologies</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">05</span><span class="section-meta-label">Stack</span></div>
+    <div class="section-heading fade-up"><span>Technologies</span></div>
     <div class="tech-grid">
-
-      <div class="tech-item">
-        <div class="tech-role">Runtime</div>
-        <div class="tech-name">Python 3.x</div>
-        <div class="tech-desc">
-          Core language. The standard library covers most of the pipeline, including
-          imaplib, email, smtplib, json, re, logging, concurrent.futures, datetime.
-          Only three third-party packages need to be installed.
-        </div>
-      </div>
-
-      <div class="tech-item">
-        <div class="tech-role">AI Inference</div>
-        <div class="tech-name">Ollama + Llama 3</div>
-        <div class="tech-desc">
-          The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client
-          connects to your locally running model. No API key, no external data transfer.
-          Llama 3 handles classification, summarization, and confidence scoring.
-        </div>
-      </div>
-
-      <div class="tech-item">
-        <div class="tech-role">Database</div>
-        <div class="tech-name">SQL Server</div>
-        <div class="tech-desc">
-          <code style="font-family:monospace;font-size:0.85em">pyodbc</code> connects to a local
-          SQLEXPRESS instance via Trusted Connection. Manages Tickets, TeamLeadMapping,
-          and TicketNotes. Thread-safe via per-task connections.
-        </div>
-      </div>
-
-      <div class="tech-item">
-        <div class="tech-role">Email</div>
-        <div class="tech-name">IMAP + SMTP</div>
-        <div class="tech-desc">
-          <code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL for reading Gmail.
-          <code style="font-family:monospace;font-size:0.85em">smtplib</code> with STARTTLS on port 587
-          for sending notification and solution emails. Both use Gmail app passwords.
-        </div>
-      </div>
-
-      <div class="tech-item">
-        <div class="tech-role">Configuration</div>
-        <div class="tech-name">PyYAML</div>
-        <div class="tech-desc">
-          Loads <code style="font-family:monospace;font-size:0.85em">config.yaml</code> at startup:
-          credentials, connection strings, model name, thread pool size, polling intervals.
-          Keep this file outside version control.
-        </div>
-      </div>
-
-      <div class="tech-item">
-        <div class="tech-role">Concurrency</div>
-        <div class="tech-name">ThreadPoolExecutor</div>
-        <div class="tech-desc">
-          <code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code>
-          keeps the ingestion loop non-blocking. Default pool of 4 workers processes
-          multiple tickets simultaneously with isolated database connections.
-        </div>
-      </div>
-
+      <div class="tech-item"><div class="tech-role">Runtime</div><div class="tech-name">Python 3.x</div><div class="tech-desc">Core language. The standard library covers most of the pipeline, including imaplib, email, smtplib, json, re, logging, concurrent.futures, datetime. Only three third-party packages need to be installed.</div></div>
+      <div class="tech-item"><div class="tech-role">AI Inference</div><div class="tech-name">Ollama + Llama 3</div><div class="tech-desc">The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client connects to your locally running model. No API key, no external data transfer. Llama 3 handles classification, summarization, and confidence scoring.</div></div>
+      <div class="tech-item"><div class="tech-role">Database</div><div class="tech-name">SQL Server</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">pyodbc</code> connects to a local SQLEXPRESS instance via Trusted Connection. Manages Tickets, TeamLeadMapping, and TicketNotes. Thread-safe via per-task connections.</div></div>
+      <div class="tech-item"><div class="tech-role">Email</div><div class="tech-name">IMAP + SMTP</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL for reading Gmail. <code style="font-family:monospace;font-size:0.85em">smtplib</code> with STARTTLS on port 587 for sending <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification</span> and solution emails. Both use Gmail app passwords.</div></div>
+      <div class="tech-item"><div class="tech-role">Configuration</div><div class="tech-name">PyYAML</div><div class="tech-desc">Loads <code style="font-family:monospace;font-size:0.85em">config.yaml</code> at startup: credentials, connection strings, model name, thread pool size, polling intervals. Keep this file outside version control.</div></div>
+      <div class="tech-item"><div class="tech-role">Concurrency</div><div class="tech-name">ThreadPoolExecutor</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code> keeps the ingestion loop non-blocking. Default pool of 4 workers processes multiple tickets simultaneously with isolated database connections.</div></div>
     </div>
   </section>
 
-  <!-- ─────────────── HOW TO RUN ─────────────── -->
+  <!-- ─── HOW TO RUN ─── -->
   <section class="section run-section" id="run">
-    <div class="section-meta">
-      <span class="section-meta-num">06</span>
-      <span class="section-meta-label">Quickstart</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>Get Running</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">06</span><span class="section-meta-label">Quickstart</span></div>
+    <div class="section-heading fade-up"><span>Get Running</span></div>
     <div class="run-steps">
-
-      <div class="run-step">
-        <span class="run-num">01</span>
-        <div class="run-content">
-          <div class="run-title">Install Dependencies</div>
-          <div class="run-desc">
-            Only three packages need to be installed. Everything else ships with Python's standard
-            library and does not require a separate install step.
-          </div>
-          <span class="code-block">pip install pyodbc ollama pyyaml</span>
-        </div>
-      </div>
-
-      <div class="run-step">
-        <span class="run-num">02</span>
-        <div class="run-content">
-          <div class="run-title">Configure config.yaml</div>
-          <div class="run-desc">
-            Edit <code style="font-family:monospace;font-size:0.85em">config.yaml</code> with your Gmail address and app password
-            (2FA must be enabled on the account to generate an app password), your SQL Server
-            connection string, the notification email address, and your preferred thread pool size
-            and polling intervals.
-          </div>
-          <span class="code-block">imap.email: your@gmail.com<br>imap.app_password: xxxx xxxx xxxx xxxx<br>database.conn_str: "Driver={ODBC Driver 17...}"<br>smtp.notification_email: ops@yourcompany.com<br>processing.thread_pool_size: 4</span>
-        </div>
-      </div>
-
-      <div class="run-step">
-        <span class="run-num">03</span>
-        <div class="run-content">
-          <div class="run-title">Populate the Knowledge Base</div>
-          <div class="run-desc">
-            Add plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files to the
-            <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory.
-            Each file should cover one policy domain: HR leave policies, payroll procedures, VPN
-            procedures, finance invoice workflows. The hybrid search handles retrieval automatically.
-            More specific policy text leads to better AI context and higher confidence scores.
-          </div>
-        </div>
-      </div>
-
-      <div class="run-step">
-        <span class="run-num">04</span>
-        <div class="run-content">
-          <div class="run-title">Start Ollama with Llama 3</div>
-          <div class="run-desc">
-            Ensure Ollama is running locally with the Llama 3 model available. The pipeline
-            connects to the Ollama client automatically.No configuration required beyond ensuring
-            the service is running.
-          </div>
-          <span class="code-block">ollama pull llama3<br>ollama serve</span>
-        </div>
-      </div>
-
-      <div class="run-step">
-        <span class="run-num">05</span>
-        <div class="run-content">
-          <div class="run-title">Launch the Pipeline</div>
-          <div class="run-desc">
-            Start the pipeline. It will run continuously, processing emails as they arrive.
-            Watch the logs for ticket creation, AI enrichment results, confidence scores, and
-            email dispatch confirmations. Press Ctrl+C for a graceful shutdown when needed.
-          </div>
-          <span class="code-block">python run_pipeline.py</span>
-        </div>
-      </div>
-
+      <div class="run-step"><span class="run-num">01</span><div class="run-content"><div class="run-title">Install Dependencies</div><div class="run-desc">Only three packages need to be installed. Everything else ships with Python's standard library and does not require a separate install step.</div><span class="code-block">pip install pyodbc ollama pyyaml</span></div></div>
+      <div class="run-step"><span class="run-num">02</span><div class="run-content"><div class="run-title">Configure config.yaml</div><div class="run-desc">Edit <code style="font-family:monospace;font-size:0.85em">config.yaml</code> with your Gmail address and app password (2FA must be enabled on the account to generate an app password), your SQL Server connection string, the notification email address, and your preferred thread pool size and polling intervals.</div><span class="code-block">imap.email: your@gmail.com<br>imap.app_password: xxxx xxxx xxxx xxxx<br>database.conn_str: "Driver={ODBC Driver 17...}"<br>smtp.notification_email: ops@yourcompany.com<br>processing.thread_pool_size: 4</span></div></div>
+      <div class="run-step"><span class="run-num">03</span><div class="run-content"><div class="run-title">Populate the Knowledge Base</div><div class="run-desc">Add plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files to the <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory. Each file should cover one policy domain: HR leave policies, payroll procedures, VPN procedures, finance invoice workflows. The hybrid search handles retrieval automatically. More specific policy text leads to better AI context and higher confidence scores.</div></div></div>
+      <div class="run-step"><span class="run-num">04</span><div class="run-content"><div class="run-title">Start Ollama with Llama 3</div><div class="run-desc">Ensure Ollama is running locally with the Llama 3 model available. The pipeline connects to the Ollama client automatically. No configuration required beyond ensuring the service is running.</div><span class="code-block">ollama pull llama3<br>ollama serve</span></div></div>
+      <div class="run-step"><span class="run-num">05</span><div class="run-content"><div class="run-title">Launch the Pipeline</div><div class="run-desc">Start the pipeline. It will run continuously, processing emails as they arrive. Watch the logs for ticket creation, AI enrichment results, confidence scores, and email dispatch confirmations. Press Ctrl+C for a graceful shutdown when needed.</div><span class="code-block">python run_pipeline.py</span></div></div>
     </div>
   </section>
 
-  <!-- ─────────────── FUTURE ENHANCEMENTS ─────────────── -->
+  <!-- ─── FUTURE ─── -->
   <section class="section" id="future">
-    <div class="section-meta">
-      <span class="section-meta-num">07</span>
-      <span class="section-meta-label">Roadmap</span>
-    </div>
-
-    <div class="section-heading fade-up">
-      <span>Planned</span>
-    </div>
-
+    <div class="section-meta"><span class="section-meta-num">07</span><span class="section-meta-label">Roadmap</span></div>
+    <div class="section-heading fade-up"><span>Planned</span></div>
     <div class="future-grid">
-      <div class="future-item">
-        <div class="future-num">01</div>
-        <div class="future-text">
-          Agent interface for manually adding <em>AgentComment</em> notes to any ticket via API or dashboard.
-        </div>
-      </div>
-      <div class="future-item">
-        <div class="future-num">02</div>
-        <div class="future-text">
-          API endpoint and view to list all notes for a given Ticket ID, ordered by timestamp.
-        </div>
-      </div>
-      <div class="future-item">
-        <div class="future-num">03</div>
-        <div class="future-text">
-          Push notifications to the assigned team lead when a new note is added to one of their tickets.
-        </div>
-      </div>
-      <div class="future-item">
-        <div class="future-num">04</div>
-        <div class="future-text">
-          Full note history included in ticket views, reports, and exported records for audit trails.
-        </div>
-      </div>
-      <div class="future-item">
-        <div class="future-num">05</div>
-        <div class="future-text">
-          IMAP IDLE full implementation for true real-time push, eliminating any polling latency.
-        </div>
-      </div>
+      <div class="future-item"><div class="future-num">01</div><div class="future-text">Agent interface for manually adding <em>AgentComment</em> notes to any ticket via API or dashboard.</div></div>
+      <div class="future-item"><div class="future-num">02</div><div class="future-text">API endpoint and view to list all notes for a given Ticket ID, ordered by timestamp.</div></div>
+      <div class="future-item"><div class="future-num">03</div><div class="future-text">Push notifications to the assigned team lead when a new note is added to one of their tickets.</div></div>
+      <div class="future-item"><div class="future-num">04</div><div class="future-text">Full note history included in ticket views, reports, and exported records for audit trails.</div></div>
+      <div class="future-item"><div class="future-num">05</div><div class="future-text">IMAP IDLE full implementation for true real-time push, eliminating any polling latency.</div></div>
     </div>
   </section>
 
-  <!-- ─────────────── FOOTER ─────────────── -->
+  <!-- ─── FOOTER ─── -->
   <footer>
     <div>
       <div class="footer-logo">MAILSYS | AI Email Ticketing</div>
-      <div class="footer-sub">
-        Python 3 · Ollama Llama 3 · SQL Server · Gmail IMAP/SMTP
-      </div>
+      <div class="footer-sub">Python 3 · Ollama Llama 3 · SQL Server · Gmail IMAP/SMTP</div>
     </div>
-    <div class="footer-right">
-      Continuous · Local AI · No external APIs<br>
-      ThreadPoolExecutor · pyodbc · PyYAML
-    </div>
+    <div class="footer-right">Continuous · Local AI · No external APIs<br>ThreadPoolExecutor · pyodbc · PyYAML</div>
   </footer>
 
-
-  <!-- ─────────────── SCRIPTS ─────────────── -->
   <script>
-    gsap.registerPlugin(ScrollTrigger);
+    // ═══════════════════════════════════════════
+    // LOADING SCREEN
+    // ═══════════════════════════════════════════
+    (function() {
+      const bar    = document.getElementById('loading-bar');
+      const status = document.getElementById('loading-status');
+      const screen = document.getElementById('loading-screen');
 
-    // ─── CURSOR ───
-    const cursor = document.getElementById('cursor');
-    let cx = 0, cy = 0;
-    document.addEventListener('mousemove', e => {
-      cx = e.clientX; cy = e.clientY;
-      gsap.to(cursor, { x: cx, y: cy, duration: 0.1, ease: 'none' });
-    });
-    // Grow on hoverable elements
-    const hoverables = document.querySelectorAll('a, button, .feature-item');
-    hoverables.forEach(el => {
-      el.addEventListener('mouseenter', () => cursor.classList.add('large'));
-      el.addEventListener('mouseleave', () => cursor.classList.remove('large'));
-    });
+      const steps = [
+        { pct: 5,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 20,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 30,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 40,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 60,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 80,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 100, msg: 'READY' }
+      ];
 
-    // ─── PAGE TRANSITION FADE OUT ON LOAD (page-transition-01) ───
-    const overlay = document.getElementById('page-overlay');
-    gsap.to(overlay, {
-      opacity: 0,
-      duration: 0.9,
-      ease: 'power2.inOut',
-      delay: 0.1,
-      onComplete: () => {
-        overlay.style.display = 'none';
-        startHeroAnimations();
+      let i = 0;
+      const tick = () => {
+        if (i >= steps.length) {
+          setTimeout(() => {
+            screen.style.transition = 'opacity 0.6s ease';
+            screen.style.opacity = '0';
+            setTimeout(() => { screen.style.display = 'none'; }, 620);
+          }, 300);
+          return;
+        }
+        const s = steps[i++];
+        bar.style.width = s.pct + '%';
+        status.textContent = s.msg;
+        setTimeout(tick, 260 + Math.random() * 180);
+      };
+      setTimeout(tick, 200);
+    })();
+
+    // ═══════════════════════════════════════════
+    // VIDEO POPUP — email/ticketing themed canvas
+    // ═══════════════════════════════════════════
+    (function() {
+      const popup    = document.getElementById('vid-popup');
+      const canvas   = document.getElementById('vid-popup-canvas');
+      const video    = document.getElementById('vid-popup-video');
+      const nameEl   = document.getElementById('vid-popup-name');
+
+      const PW = 300, PH = 168;
+      let animId = null, frame = 0;
+
+      // ── Email-themed ticket rows ──
+      function makeRow(w) {
+        const cats = ['Payroll/Salary','Finance/Invoice','Technology/VPN','HR/Leave'];
+        const statuses = ['New','Processed','Routing…','Notified'];
+        const confs = [0.91,0.87,0.94,0.76,0.82,0.96];
+        return {
+          id:   'INC-2026-' + (1000 + Math.floor(Math.random() * 9000)),
+          cat:  cats[Math.floor(Math.random() * cats.length)],
+          sta:  statuses[Math.floor(Math.random() * statuses.length)],
+          conf: confs[Math.floor(Math.random() * confs.length)],
+          age:  0,
+          life: 90 + Math.floor(Math.random() * 60),
+          x:    0,
+          y:    0
+        };
       }
-    });
 
-    // ─── HERO ANIMATIONS ───
-    function startHeroAnimations() {
-      // Eyebrow: slide up (text-reveal-01 variant)
-      gsap.to('.hero-eyebrow span', {
-        y: 0,
-        duration: 0.75,
-        ease: 'power3.out',
-        delay: 0.05
-      });
+      // Keep track of our resize listener so we can clean it up cleanly
+      let resizeHandler = null;
 
-      // Title lines: staggered slide up (text-reveal-01)
-      gsap.to('.hero-title .line span', {
-        y: 0,
-        duration: 1.1,
-        ease: 'power4.out',
-        stagger: 0.1,
-        delay: 0.15
-      });
+      function startCanvas(label) {
+        stopCanvas();
+        frame = 0;
 
-      // Desc: fade in + translate up (text-reveal-02)
-      gsap.to('.hero-desc', {
-        opacity: 1,
-        y: 0,
-        duration: 0.85,
-        ease: 'power3.out',
-        delay: 0.55
-      });
+        const ctx = canvas.getContext('2d');
+        let rows = [];
+        const ROW_H = 22;
+        const startY = 28;
 
-      // Stats: fade in
-      gsap.to('.hero-stats', {
-        opacity: 1,
-        duration: 0.75,
-        ease: 'power3.out',
-        delay: 0.7
-      });
-    }
+        // 1. Define variables at the function scope so tick() can access the updated dimensions
+        let W = PW;
+        let H = PH;
 
-    // ─── SECTION TRANSITION (section-transition-01): Arch clip-path reveal ───
-    ScrollTrigger.create({
-      trigger: '.arch-section',
-      start: 'top 90%',
-      onEnter: () => {
-        gsap.to('.arch-section', {
-          clipPath: 'inset(0% 0 0 0)',
-          duration: 1.0,
-          ease: 'power3.inOut'
-        });
-      }
-    });
+        // 2. Separate logic to calculate dimensions and handle scaling changes
+        function handleResize() {
+          // If in fullscreen, use the browser window size. Otherwise, use container sizes.
+          const isFull = !!document.fullscreenElement;
+          
+          canvas.width = isFull ? window.innerWidth : (canvas.offsetWidth || PW);
+          canvas.height = isFull ? (window.innerHeight - 40) : (canvas.offsetHeight || PH);
+          
+          W = canvas.width;
+          H = canvas.height;
 
-    // ─── FADE-UP ON SCROLL (text-reveal-02 for all sections) ───
-    gsap.utils.toArray('.fade-up').forEach((el, i) => {
-      gsap.fromTo(el,
-        { opacity: 0, y: 22 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.75,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: el,
-            start: 'top 75%',
-            toggleActions: 'play none none reverse'
-          },
-          delay: (i % 3) * 0.04
-        }
-      );
-    });
-
-    // ─── PIPELINE STEPS stagger ───
-    gsap.utils.toArray('.pipeline-step').forEach((step, i) => {
-      gsap.fromTo(step,
-        { opacity: 0, y: 16 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.6,
-          ease: 'power3.out',
-          scrollTrigger: {
-            trigger: step,
-            start: 'top 88%',
-          }
-        }
-      );
-    });
-
-    // ─── FEATURE ITEMS stagger ───
-    gsap.utils.toArray('.feature-item').forEach((item, i) => {
-      gsap.fromTo(item,
-        { opacity: 0 },
-        {
-          opacity: 1,
-          duration: 0.55,
-          ease: 'power2.out',
-          scrollTrigger: {
-            trigger: item,
-            start: 'top 90%',
-          }
-        }
-      );
-    });
-
-    // ─── ARCH ITEMS ───
-    gsap.utils.toArray('.arch-item').forEach((item, i) => {
-      gsap.fromTo(item,
-        { opacity: 0, y: 14 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.65,
-          ease: 'power3.out',
-          delay: (i % 2) * 0.1,
-          scrollTrigger: {
-            trigger: item,
-            start: 'top 88%',
-          }
-        }
-      );
-    });
-
-    // ─── SCHEMA / TECH / RUN / FUTURE items ───
-    ['schema-table', 'tech-item', 'run-step', 'future-item'].forEach(cls => {
-      gsap.utils.toArray('.' + cls).forEach((el, i) => {
-        gsap.fromTo(el,
-          { opacity: 0, y: 12 },
-          {
-            opacity: 1,
-            y: 0,
-            duration: 0.6,
-            ease: 'power3.out',
-            delay: (i % 3) * 0.07,
-            scrollTrigger: {
-              trigger: el,
-              start: 'top 90%',
+          // Regenerate rows if the layout expanded significantly
+          const maxRows = Math.floor((H - startY - 8) / ROW_H);
+          if (rows.length < maxRows) {
+            for (let r = rows.length; r < maxRows; r++) {
+              const row = makeRow(W);
+              row.y = startY + r * ROW_H;
+              row.age = Math.floor(Math.random() * row.life * 0.5);
+              rows.push(row);
             }
           }
-        );
+        }
+
+        // Run the initial sizing calculation
+        handleResize();
+
+        // 3. Listen for window adjustments / going fullscreen
+        resizeHandler = handleResize;
+        window.addEventListener('resize', resizeHandler);
+
+        // 4. Main Animation Loop
+        function tick() {
+          // Background
+          ctx.fillStyle = '#080808';
+          ctx.fillRect(0, 0, W, H);
+
+          // Header bar
+          ctx.fillStyle = '#111';
+          ctx.fillRect(0, 0, W, 20);
+
+          // Header labels
+          ctx.fillStyle = 'rgba(100,97,92,.7)';
+          ctx.font = 'bold 6px "Arial Narrow",sans-serif';
+          ctx.fillText('TICKET ID', 8, 13);
+          ctx.fillText('CATEGORY', 88, 13);
+          ctx.fillText('STATUS', 188, 13);
+          ctx.fillText('CONF', W - 48, 13); // Dynamically anchored right side
+
+          // Column dividers
+          ctx.strokeStyle = 'rgba(40,38,35,1)';
+          ctx.lineWidth = 0.5;
+          [83, 183, W - 53].forEach(x => {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+          });
+
+          // Draw active rows
+          rows.forEach((row, ri) => {
+            // Keep rows inside visible area if screen downsized
+            if (row.y + ROW_H > H) return; 
+
+            const rowAlpha = row.age < 6
+              ? row.age / 6
+              : row.age > row.life - 8
+              ? (row.life - row.age) / 8
+              : 1;
+
+            // Zebra striping background
+            if (ri % 2 === 0) {
+              ctx.fillStyle = `rgba(255,255,255,${0.018 * rowAlpha})`;
+              ctx.fillRect(0, row.y, W, ROW_H - 1);
+            }
+
+            // Top row processing scan pulse
+            if (ri === 0 && frame % 80 < 12) {
+              const pulse = Math.sin((frame % 80) / 12 * Math.PI);
+              ctx.fillStyle = `rgba(255,255,255,${0.04 * pulse * rowAlpha})`;
+              ctx.fillRect(0, row.y, W, ROW_H - 1);
+            }
+
+            ctx.font = '6.5px "Courier New",monospace';
+
+            // Column 1: Ticket ID
+            ctx.fillStyle = `rgba(170,165,155,${0.75 * rowAlpha})`;
+            ctx.fillText(row.id, 8, row.y + 14);
+
+            // Column 2: Category text strings
+            const catTrunc = row.cat.length > 14 ? row.cat.slice(0, 13) + '…' : row.cat;
+            ctx.fillStyle = `rgba(145,140,130,${0.6 * rowAlpha})`;
+            ctx.fillText(catTrunc, 88, row.y + 14);
+
+            // Column 3: Status Pill
+            const statusColors = {
+              'New': [180, 175, 165],
+              'Processed': [100, 200, 140],
+              'Routing…': [200, 175, 80],
+              'Notified': [120, 160, 220]
+            };
+            const sc = statusColors[row.sta] || [160, 155, 148];
+            ctx.fillStyle = `rgba(${sc[0]},${sc[1]},${sc[2]},${0.75 * rowAlpha})`;
+            ctx.fillText(row.sta, 188, row.y + 14);
+
+            // Column 4: Confidence progress bar
+            const confW = 28;
+            const barX = W - 48;
+            ctx.fillStyle = `rgba(35,33,30,${rowAlpha})`;
+            ctx.fillRect(barX, row.y + 7, confW, 4);
+            
+            const barColor = row.conf >= 0.9
+              ? `rgba(100,200,140,${rowAlpha})`
+              : row.conf >= 0.8
+              ? `rgba(200,175,80,${rowAlpha})`
+              : `rgba(200,100,80,${rowAlpha})`;
+            ctx.fillStyle = barColor;
+            ctx.fillRect(barX, row.y + 7, Math.round(confW * row.conf), 4);
+
+            row.age++;
+          });
+
+          // Manage lifecycle / recycling tracking loops
+          rows = rows.map(r => {
+            if (r.age >= r.life) {
+              const nr = makeRow(W);
+              nr.y = r.y; nr.age = 0;
+              return nr;
+            }
+            return r;
+          });
+
+          // Live interface telemetry metrics (HUD Footer)
+          ctx.fillStyle = 'rgba(80,78,74,.5)';
+          ctx.font = '5.5px "Arial Narrow",sans-serif';
+          ctx.fillText('MAILSYS  LIVE QUEUE', 8, H - 5);
+          ctx.fillText(label.toUpperCase(), W - ctx.measureText(label.toUpperCase()).width - 6, H - 5);
+
+          // Moving Laser Grid Scan Line
+          const sy = (frame * 0.8) % H;
+          ctx.strokeStyle = `rgba(190,185,175,${0.04 + 0.02 * Math.sin(frame * 0.07)})`;
+          ctx.lineWidth = 0.5;
+          ctx.beginPath(); ctx.moveTo(0, sy); ctx.lineTo(W, sy); ctx.stroke();
+
+          frame++;
+          animId = requestAnimationFrame(tick);
+        }
+        
+        tick();
+      }
+
+      function stopCanvas() {
+        if (animId) { 
+          cancelAnimationFrame(animId); 
+          animId = null; 
+        }
+        // Clean up window resize listener to prevent memory leaks
+        if (resizeHandler) {
+          window.removeEventListener('resize', resizeHandler);
+          resizeHandler = null;
+        }
+      }
+
+      function stopCanvas() {
+        if (animId) { cancelAnimationFrame(animId); animId = null; }
+      }
+
+      function placePopup(e) {
+        const totalH = popup.offsetHeight || 196;
+        let x = e.clientX + 18;
+        let y = e.clientY - totalH / 2;
+        if (x + PW > window.innerWidth - 12) x = e.clientX - PW - 18;
+        if (y < 10) y = 10;
+        if (y + totalH > window.innerHeight - 10) y = window.innerHeight - totalH - 10;
+        popup.style.left = x + 'px';
+        popup.style.top  = y + 'px';
+      }
+
+      function showPopup(trigger, e) {
+        const label = trigger.dataset.label || 'DEMO';
+        const vsrc  = (trigger.dataset.video || '').trim();
+        nameEl.textContent = label.toUpperCase();
+
+        placePopup(e);
+
+        video.pause();
+        video.src = '';
+        video.removeAttribute('src');
+        try { video.load(); } catch(_) {}
+        video.style.display = 'none';
+        video.classList.remove('loaded');
+
+        if (vsrc) {
+          video.src = vsrc;
+          video.style.display = 'block';
+          video.oncanplay = () => video.classList.add('loaded');
+          video.onerror = () => { video.style.display = 'none'; };
+          video.play().catch(() => {});
+        }
+
+        startCanvas(label);
+        popup.classList.add('show');
+      }
+
+      function hidePopup() {
+        popup.classList.remove('show');
+        stopCanvas();
+        video.pause();
+        video.src = '';
+        video.classList.remove('loaded');
+      }
+
+   document.querySelectorAll('.vid-trigger').forEach(t => {
+  t.addEventListener('mouseenter', e => showPopup(t, e));
+  t.addEventListener('mousemove',  e => placePopup(e));
+  t.addEventListener('mouseleave', () => {
+    // Only hide the popup if we aren't currently in fullscreen mode
+    if (!document.fullscreenElement) {
+      hidePopup();
+    }
+  });
+
+  // New Double-Click Listener for Fullscreen Toggle
+  t.addEventListener('dblclick', (e) => {
+    e.preventDefault(); // Prevent text selection on rapid clicking
+    
+    if (!document.fullscreenElement) {
+      // Go fullscreen! Target the entire popup element so overlays stay intact
+      popup.requestFullscreen().catch(err => {
+        console.error(`Error attempting to enable fullscreen: ${err.message}`);
       });
-    });
-
-   // ─── SMOOTH ANCHOR SCROLL (OPTIMIZED) ───
-document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-  anchor.addEventListener('click', e => {
-    e.preventDefault();
-    const target = document.querySelector(anchor.getAttribute('href'));
-
-    if (target) {
-      // Calculate position accounting for your fixed navigation bar height
-      const navHeight = document.getElementById('site-nav').offsetHeight;
-      const topOffset = target.offsetTop - navHeight;
-
-      gsap.to(window, {
-        scrollTo: { y: topOffset },
-        duration: 0.9,
-        ease: 'power3.inOut',
-        overwrite: 'auto' // Prevents conflict if user scrolls or clicks mid-animation
-      });
+    } else {
+      // Exit fullscreen if already active
+      document.exitFullscreen();
     }
   });
 });
 
-    // ─── NAV: fade in after page transition ───
-    gsap.from('#site-nav', {
-      y: -20,
-      opacity: 0,
-      duration: 0.6,
-      ease: 'power3.out',
-      delay: 0.5
+// Optional: Automatically clean up/hide popup when manually exiting fullscreen via ESC key
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement) {
+    hidePopup();
+  }
+});
+    })();
+
+    // ═══════════════════════════════════════════
+    // GSAP ANIMATIONS
+    // ═══════════════════════════════════════════
+    gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
+
+    // Cursor
+    const cursor = document.getElementById('cursor');
+    document.addEventListener('mousemove', e => {
+      gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1, ease: 'none' });
+    });
+    document.querySelectorAll('a, button, .feature-item').forEach(el => {
+      el.addEventListener('mouseenter', () => cursor.classList.add('large'));
+      el.addEventListener('mouseleave', () => cursor.classList.remove('large'));
     });
 
-    // ─── HAMBURGER / MOBILE DRAWER ───
+    // Page overlay (fires after loading screen fades)
+    const overlay = document.getElementById('page-overlay');
+    overlay.style.display = 'none'; // loading screen covers it; no double-fade needed
+
+    function startHeroAnimations() {
+      gsap.to('.hero-eyebrow span', { y: 0, duration: 0.75, ease: 'power3.out', delay: 0.05 });
+      gsap.to('.hero-title .line span', { y: 0, duration: 1.1, ease: 'power4.out', stagger: 0.1, delay: 0.15 });
+      gsap.to('.hero-desc', { opacity: 1, y: 0, duration: 0.85, ease: 'power3.out', delay: 0.55 });
+      gsap.to('.hero-stats', { opacity: 1, duration: 0.75, ease: 'power3.out', delay: 0.7 });
+    }
+
+    // Trigger hero anims after loading screen clears (~2s)
+    setTimeout(startHeroAnimations, 2000);
+
+    ScrollTrigger.create({
+      trigger: '.arch-section',
+      start: 'top 90%',
+      onEnter: () => gsap.to('.arch-section', { clipPath: 'inset(0% 0 0 0)', duration: 1.0, ease: 'power3.inOut',toggleActions: 'play none none reverse'  })
+    });
+
+    gsap.utils.toArray('.fade-up').forEach((el, i) => {
+      gsap.fromTo(el, { opacity: 0, y: 22 }, { opacity: 1, y: 0, duration: 0.75, ease: 'power3.out',
+        scrollTrigger: { trigger: el, start: 'top 75%', toggleActions: 'play none none reverse' },
+        delay: (i % 3) * 0.04
+      });
+    });
+    gsap.utils.toArray('.pipeline-step').forEach(step => {
+      gsap.fromTo(step, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out',
+        scrollTrigger: { trigger: step, start: 'top 88%',toggleActions: 'play none none reverse'  }
+      });
+    });
+    gsap.utils.toArray('.feature-item').forEach(item => {
+      gsap.fromTo(item, { opacity: 0 }, { opacity: 1, duration: 0.55, ease: 'power2.out',
+        scrollTrigger: { trigger: item, start: 'top 90%', toggleActions: 'play none none reverse' }
+      });
+    });
+    gsap.utils.toArray('.arch-item').forEach((item, i) => {
+      gsap.fromTo(item, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.65, ease: 'power3.out',
+        delay: (i % 2) * 0.1,
+        scrollTrigger: { trigger: item, start: 'top 88%', toggleActions: 'play none none reverse' }
+      });
+    });
+    ['schema-table','tech-item','run-step','future-item'].forEach(cls => {
+      gsap.utils.toArray('.' + cls).forEach((el, i) => {
+        gsap.fromTo(el, { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: 'power3.out',
+          delay: (i % 3) * 0.07,
+          scrollTrigger: { trigger: el, start: 'top 90%', toggleActions: 'play none none reverse' }
+        });
+      });
+    });
+
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', e => {
+        e.preventDefault();
+        const target = document.querySelector(anchor.getAttribute('href'));
+        if (target) {
+          const navH = document.getElementById('site-nav').offsetHeight;
+          gsap.to(window, { scrollTo: { y: target.offsetTop - navH }, duration: 0.9, ease: 'power3.inOut', overwrite: 'auto' });
+        }
+      });
+    });
+
+    gsap.from('#site-nav', { y: -20, opacity: 0, duration: 0.6, ease: 'power3.out', delay: 2.1 });
+
+    // Hamburger
     const hamburger = document.getElementById('nav-hamburger');
     const drawer = document.getElementById('nav-drawer');
     let drawerOpen = false;
-
     function toggleDrawer(open) {
       drawerOpen = open;
       hamburger.classList.toggle('open', open);
@@ -2099,23 +1212,18 @@ document.querySelectorAll('a[href^="#"]').forEach(anchor => {
       drawer.setAttribute('aria-hidden', !open);
       document.body.style.overflow = open ? 'hidden' : '';
     }
-
     hamburger.addEventListener('click', () => toggleDrawer(!drawerOpen));
-
-    // Close on link tap + scroll to section
     drawer.querySelectorAll('.drawer-link').forEach(link => {
       link.addEventListener('click', e => {
         e.preventDefault();
         toggleDrawer(false);
         const target = document.querySelector(link.getAttribute('href'));
         if (target) {
-          const navHeight = document.getElementById('site-nav').offsetHeight;
-          const topOffset = target.offsetTop - navHeight;
-          gsap.to(window, { scrollTo: { y: topOffset }, duration: 0.9, ease: 'power3.inOut' });
+          const navH = document.getElementById('site-nav').offsetHeight;
+          gsap.to(window, { scrollTo: { y: target.offsetTop - navH }, duration: 0.9, ease: 'power3.inOut' });
         }
       });
     });
   </script>
-
 </body>
 </html>
