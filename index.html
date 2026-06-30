@@ -299,8 +299,7 @@
     .marquee-sep { color: var(--g700); }
     @keyframes scroll-marquee {
       0% { transform: translateX(0); }
-      100% { transform: translateX(-50%),
-        ; }
+      100% { transform: translateX(-50%); }
     }
 
     .section { padding: 7rem 2.5rem; border-bottom: 1px solid var(--border); }
@@ -575,9 +574,10 @@
     </h1>
     <div class="hero-bottom">
       <p class="hero-desc">
-        A continuously running AI pipeline that fetches support emails from Gmail, classifies them
-        with a local Llama 3 model, routes them to the right team lead, and sends knowledge-backed
-        resolution emails.
+        A continuously running AI pipeline that fetches support emails from Gmail, enriches them with
+        semantic knowledge-base search, classifies them via local Llama 3 with confidence scoring,
+        and routes through a three-tier workflow: auto-resolve (≥0.9), team-lead approval (0.7–0.9),
+        or escalation (<0.7) — sending friendly, SOP-backed resolution emails at every step.
       </p>
     </div>
   </section>
@@ -586,21 +586,25 @@
   <div class="marquee-section" aria-hidden="true">
     <div class="marquee-track">
       <span class="marquee-item">Email Ingestion</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Semantic KB Search</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">AI Categorization</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Knowledge Base Search</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Team Lead Routing</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Confidence Scoring</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Auto-Resolve (≥0.9)</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Approval Flow (0.7–0.9)</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Escalation (<0.7)</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Solution Emails</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Ticket Notes</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Duplicate Detection</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Duplicate Guard</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Email Ingestion</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Semantic KB Search</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">AI Categorization</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Knowledge Base Search</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Team Lead Routing</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Confidence Scoring</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Auto-Resolve (≥0.9)</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Approval Flow (0.7–0.9)</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Escalation (<0.7)</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Solution Emails</span><span class="marquee-item marquee-sep">/</span>
       <span class="marquee-item">Ticket Notes</span><span class="marquee-item marquee-sep">/</span>
-      <span class="marquee-item">Duplicate Detection</span><span class="marquee-item marquee-sep">/</span>
+      <span class="marquee-item">Duplicate Guard</span><span class="marquee-item marquee-sep">/</span>
     </div>
   </div>
 
@@ -612,37 +616,37 @@
       <div class="pipeline-step">
         <span class="pstep-num">01</span>
         <div class="pstep-name">Email Ingestion</div>
-        <div class="pstep-desc">Connects to Gmail via IMAP over SSL, authenticating with an app password sourced from <code style="font-family:monospace;font-size:0.85em">config.yaml</code>. Searches for UNSEEN messages received since the current date. Parses the full email, handling multipart MIME structures correctly before any further processing. Each email is marked as <code style="font-family:monospace;font-size:0.85em">\Seen</code> immediately after being read, preventing any duplicate processing across restarts or crashes.</div>
+        <div class="pstep-desc">Connects to Gmail via IMAP over SSL, authenticating with an app password from <code style="font-family:monospace;font-size:0.85em">config.yaml</code>. Searches for UNSEEN messages since today's date. Parses multipart MIME, handles HTML/plain text, and marks emails <code style="font-family:monospace;font-size:0.85em">\Seen</code> atomically after ticket insertion. Filters out system notification emails (matching "High Confidence Ticket Notification" subject) to prevent self-loops.</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">02</span>
         <div class="pstep-name">Ticket Generation</div>
-        <div class="pstep-desc">A unique Ticket ID is generated in the format <code style="font-family:monospace;font-size:0.85em">INC-2026-{1000–9999}</code> using a random integer in the range. The ticket is immediately inserted into SQL Server with a status of "New". An async AI processing task is dispatched to the thread pool, so email ingestion never waits for AI inference to complete.</div>
+        <div class="pstep-desc">Generates a unique Ticket ID <code style="font-family:monospace;font-size:0.85em">INC-2026-{1000–9999}</code>. Inserts into SQL Server with status "New". Sends immediate acknowledgement email to sender with ticket reference. Dispatches async AI enrichment to thread pool — ingestion never blocks on AI inference.</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">03</span>
-        <div class="pstep-name">Knowledge Base Search</div>
-        <div class="pstep-desc">Before calling the AI model, the system searches the local <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge_base/</span> directory for relevant corporate policy context. A two-stage hybrid approach is used: first, Ollama semantically extracts the topic from the ticket content and matches it against policy files. If semantic search yields no results, a keyword fallback matches terms longer than four characters against all documents so context is always retrieved.</div>
+        <div class="pstep-name">Hybrid Knowledge Search</div>
+        <div class="pstep-desc">Searches <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge_base/</span> for policy context. Primary: semantic embeddings via Ollama (<code style="font-family:monospace;font-size:0.85em">nomic-embed-text</code>) with cosine similarity, cached by file mtime. Fallback: keyword search on terms >4 chars. Documents cached in memory; re-embedded automatically when files change. Top-K and min-similarity configurable.</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">04</span>
-        <div class="pstep-name">AI Processing</div>
-        <div class="pstep-desc">The ticket content and retrieved <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base</span> context are combined into a structured prompt, sent to Llama 3 via the local Ollama client. The system prompt strictly instructs the model to return only valid JSON. The response is parsed for four fields: <em>category</em>, <em>subcategory</em>, <em>summary</em>, and <em>confidence</em> (0.0–1.0). Robust JSON cleaning handles markdown code fences and malformed outputs, with regex-based fallback extraction if parsing fails entirely.</div>
+        <div class="pstep-name">AI Categorization & Confidence</div>
+        <div class="pstep-desc">Sends ticket + SOP context to Llama 3 via Ollama with strict JSON schema. Extracts <em>category</em>, <em>subcategory</em>, <em>summary</em>, <em>confidence</em> (0.0–1.0). Category whitelist: Payroll/Salary, Finance/Invoice, Technology/VPN, HR/Leave. Two-attempt retry with <code style="font-family:monospace;font-size:0.85em">num_ctx=8192</code>. Fallback: regex extraction → keyword scan → content-based inference (normalized keyword scoring with dominance guard).</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">05</span>
-        <div class="pstep-name">Team Lead Routing</div>
-        <div class="pstep-desc">The AI-predicted category is used to query the <code style="font-family:monospace;font-size:0.85em">TeamLeadMapping</code> table in SQL Server. The appropriate team lead identifier is retrieved and written to the ticket record. If no mapping is found for the predicted category, the system defaults to <code style="font-family:monospace;font-size:0.85em">TL_GENERAL</code> to ensure every ticket is always assigned. The ticket status is then updated from "New" to "Processed".</div>
+        <div class="pstep-name">Team Lead Routing (Config-Based)</div>
+        <div class="pstep-desc">Looks up team lead from <code style="font-family:monospace;font-size:0.85em">team_leads</code> array in config.yaml (not DB). Each lead maps to one or more categories. Defaults to <code style="font-family:monospace;font-size:0.85em">TL_GENERAL</code> if unmatched. Writes category, subcategory, summary, assigned lead, and status="Processed" to DB.</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">06</span>
-        <div class="pstep-name">Notifications and Solution</div>
-        <div class="pstep-desc">When the confidence score meets or exceeds the 0.9 threshold, two emails are dispatched via Gmail SMTP with STARTTLS on port 587. First, a high-confidence alert is sent to the configured <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification_email</span> address. Second, a solution email incorporating extracted <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base</span> content is sent directly to the original sender. Both emails are only triggered above the threshold to minimize noise from low-confidence classifications.</div>
+        <div class="pstep-name">Confidence-Driven Workflow</div>
+        <div class="pstep-desc">Three-tier automation by confidence: ≥0.9 → auto-resolve: sends <span class="vid-trigger" data-label="Solution Email" data-video="solution.mp4">solution email</span> (AI-rewritten from SOP), notifies ops, marks <code style="font-family:monospace;font-size:0.85em">Resolved</code>. 0.7–0.9 → <em>PendingApproval</em>: generates solution, emails team lead for Approve/Reject. 0.7> → <em>Escalated</em>: emails team lead directly, no auto-solution. Team lead replies (approval/rejection/custom) are parsed and forwarded to employee.</div>
       </div>
       <div class="pipeline-step">
         <span class="pstep-num">07</span>
-        <div class="pstep-name">Ticket Notes and Replies</div>
-        <div class="pstep-desc">System notes are automatically written to the <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table after each key event: when a solution email is sent, and when the ticket is fully processed and resolved. When a user replies to a solution email, the reply is detected by parsing the subject for the original Ticket ID pattern. Instead of creating a new ticket, the reply body is stored as a <em>UserReply</em> note to preserve the conversation thread without generating duplicate tickets.</div>
+        <div class="pstep-name">Ticket Notes & Duplicate Detection</div>
+        <div class="pstep-desc"><code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table tracks lifecycle: <em>SystemNote</em> (auto events), <em>UserReply</em> (sender replies), <em>PendingApproval</em> (staged solutions). Duplicate detection: parses subject for <code style="font-family:monospace;font-size:0.85em">INC-2026-XXXX</code> on inbound mail — replies attach to existing ticket as <em>UserReply</em> notes instead of creating new tickets. Approval/Escalation replies from team leads also detected via subject patterns.</div>
       </div>
     </div>
   </section>
@@ -654,12 +658,14 @@
     <div class="feature-list">
       <div class="feature-item"><span class="f-num">01</span><div class="f-body"><div class="f-header"><div class="f-title">Continuous Polling</div><span class="f-tag">Core</span></div><div class="f-desc">The pipeline runs indefinitely, checking for new emails in a tight loop. When no unread messages are found, it sleeps for a configurable interval (default 10 s) before polling again. IMAP IDLE is partially supported with a configurable timeout, falling back to standard polling. Press Ctrl+C to trigger a clean KeyboardInterrupt shutdown.</div></div></div>
       <div class="feature-item"><span class="f-num">02</span><div class="f-body"><div class="f-header"><div class="f-title">Local AI | No API Keys</div><span class="f-tag">AI</span></div><div class="f-desc">All inference runs locally via Ollama. No email content is sent to external services. The Llama 3 model classifies tickets into four categories <em>(Payroll/Salary, Finance/Invoice, Technology/VPN, and HR/Leave)</em> and generates a concise one-sentence summary. Confidence is returned as a float between 0 and 1, driving the automation threshold logic downstream.</div></div></div>
-      <div class="feature-item"><span class="f-num">03</span><div class="f-body"><div class="f-header"><div class="f-title">Hybrid Knowledge Base Search</div><span class="f-tag">AI</span></div><div class="f-desc">Corporate SOPs in <code style="font-family:monospace;font-size:0.85em">knowledge_base/*.txt</code> are retrieved in two stages. Ollama first extracts the semantic topic from the ticket and checks which policy documents mention it. If this yields nothing, keyword extraction (only terms longer than four characters) falls back to direct document matching. This two-stage approach avoids needing a vector database while still providing meaningful context for the AI model.</div></div></div>
-      <div class="feature-item"><span class="f-num">04</span><div class="f-body"><div class="f-header"><div class="f-title">Confidence-Based Automation</div><span class="f-tag">Logic</span></div><div class="f-desc">The system behaves differently depending on how certain the AI is. When confidence reaches or exceeds 0.9, it acts immediately: notifying the operations team and sending the sender a solution email. Below that threshold, the ticket is still categorized and routed, but no automated email is sent. This prevents low-quality resolutions from being sent automatically.</div></div></div>
-      <div class="feature-item"><span class="f-num">05</span><div class="f-body"><div class="f-header"><div class="f-title">Concurrent Thread Pool</div><span class="f-tag">Concurrency</span></div><div class="f-desc">Email ingestion runs synchronously on the main thread while AI enrichment tasks are dispatched to a <code style="font-family:monospace;font-size:0.85em">ThreadPoolExecutor</code>. The default pool size of 4 allows multiple tickets to be enriched simultaneously. Each async task creates its own isolated database connection to avoid locking conflicts and shared state. Pool size is configurable via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code> in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>.</div></div></div>
-      <div class="feature-item"><span class="f-num">06</span><div class="f-body"><div class="f-header"><div class="f-title">Internal Ticket Notes</div><span class="f-tag">Tracking</span></div><div class="f-desc">A dedicated <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table tracks the full lifecycle of each ticket. Three note types are supported: <em>UserReply</em> for email thread responses from the sender, <em>SystemNote</em> for automated events such as "Solution sent" and "Ticket resolved", and <em>AgentComment</em> reserved for future manual agent input. Each note stores the author (email address or system identifier) and a precise timestamp.</div></div></div>
-      <div class="feature-item"><span class="f-num">07</span><div class="f-body"><div class="f-header"><div class="f-title">Duplicate Detection</div><span class="f-tag">Safety</span></div><div class="f-desc">When a user replies to a solution email, the subject line is parsed for the Ticket ID pattern (<code style="font-family:monospace;font-size:0.85em">INC-2026-XXXX</code>). If found, no new ticket is created. Instead, the reply body is stored as a <em>UserReply</em> note against the original ticket. This prevents the inbox from generating duplicate tickets on every email thread reply, keeping the database clean.</div></div></div>
-      <div class="feature-item"><span class="f-num">08</span><div class="f-body"><div class="f-header"><div class="f-title">Layered Error Handling</div><span class="f-tag">Resilience</span></div><div class="f-desc">Every external dependency <em>(IMAP, SQL Server, Ollama, and SMTP)</em> is wrapped in its own try/except block with structured logging at every key step. JSON parsing includes two-layer fallback: first strip markdown fences and re-parse; then use regex extraction to pull the four expected fields. Database connections are always closed in finally blocks. No single failure cascades into a full shutdown so the pipeline keeps running.</div></div></div>
+      <div class="feature-item"><span class="f-num">03</span><div class="f-body"><div class="f-header"><div class="f-title">Semantic Knowledge Base Search</div><span class="f-tag">AI</span></div><div class="f-desc">Corporate SOPs in <code style="font-family:monospace;font-size:0.85em">knowledge_base/*.txt</code> are embedded via Ollama (<code style="font-family:monospace;font-size:0.85em">nomic-embed-text</code>) and matched using cosine similarity. Results cached by file mtime — edits auto-re-embed on next search. Configurable top-K (default 2) and min-similarity (default 0.55). Keyword fallback for terms >4 chars ensures context is always retrieved. No vector DB required.</div></div></div>
+      <div class="feature-item"><span class="f-num">04</span><div class="f-body"><div class="f-header"><div class="f-title">Three-Tier Confidence Automation</div><span class="f-tag">Logic</span></div><div class="f-desc">Confidence gates the entire workflow: ≥0.9 auto-resolves (solution email sent, ops notified, ticket Resolved). 0.7–0.9 triggers <em>PendingApproval</em> — solution generated but held for team lead Approve/Reject. 0.7 escalates directly to team lead with no auto-solution. Prevents low-quality resolutions while keeping high-confidence tickets fully automatic.</div></div></div>
+      <div class="feature-item"><span class="f-num">05</span><div class="f-body"><div class="f-header"><div class="f-title">Team Lead Approval Workflow</div><span class="f-tag">Logic</span></div><div class="f-desc">When confidence is 0.7–0.9, the AI-generated solution is emailed to the assigned team lead with "Reply Approved to approve, Reply Reject to Reject." Lead's reply is parsed (stripping quoted history), decision extracted, and on Approve the solution is sent to employee; on Reject the lead's custom message is forwarded. Escalation replies (<0.7) are similarly parsed and forwarded.</div></div></div>
+      <div class="feature-item"><span class="f-num">06</span><div class="f-body"><div class="f-header"><div class="f-title">AI-Rewritten Solution Emails</div><span class="f-tag">AI</span></div><div class="f-desc">On auto-resolve (≥0.9) or approval, a second Ollama call rewrites the raw SOP into a friendly, step-by-step employee-facing email: greeting, numbered actions (max 6), plain English, no internal jargon (SOP, policy, routing). Falls back to generic template if Ollama unavailable. Sender name extracted from email for personalization.</div></div></div>
+      <div class="feature-item"><span class="f-num">07</span><div class="f-body"><div class="f-header"><div class="f-title">Concurrent Thread Pool</div><span class="f-tag">Concurrency</span></div><div class="f-desc">Email ingestion runs synchronously on the main thread while AI enrichment tasks are dispatched to a <code style="font-family:monospace;font-size:0.85em">ThreadPoolExecutor</code>. The default pool size of 4 allows multiple tickets to be enriched simultaneously. Each async task creates its own isolated database connection to avoid locking conflicts and shared state. Pool size is configurable via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code> in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>.</div></div></div>
+      <div class="feature-item"><span class="f-num">08</span><div class="f-body"><div class="f-header"><div class="f-title">Ticket Notes & Lifecycle Tracking</div><span class="f-tag">Tracking</span></div><div class="f-desc">A dedicated <code style="font-family:monospace;font-size:0.85em">TicketNotes</code> table tracks the full lifecycle. Note types: <em>UserReply</em> (sender replies), <em>SystemNote</em> (automated events: solution sent, resolved, approved, escalated), <em>PendingApproval</em> (staged solution text), <em>AgentComment</em> (reserved for manual input). Each note stores author and timestamp. Auto-creates table if missing.</div></div></div>
+      <div class="feature-item"><span class="f-num">09</span><div class="f-body"><div class="f-header"><div class="f-title">Duplicate & Self-Loop Detection</div><span class="f-tag">Safety</span></div><div class="f-desc">Three duplicate guards: (1) Inbound subject parsed for <code style="font-family:monospace;font-size:0.85em">INC-2026-XXXX</code> — replies become <em>UserReply</em> notes, not new tickets. (2) Team lead approval/escalation replies detected via subject patterns ("Approval Needed:", "Escalated Ticket:"). (3) Self-loop filter skips emails with subject "High Confidence Ticket Notification" (the system's own ops alerts).</div></div></div>
+      <div class="feature-item"><span class="f-num">10</span><div class="f-body"><div class="f-header"><div class="f-title">Layered Error Handling</div><span class="f-tag">Resilience</span></div><div class="f-desc">Every external dependency <em>(IMAP, SQL Server, Ollama, SMTP)</em> wrapped in try/except with structured logging. JSON parsing: two-layer fallback (strip markdown fences → regex extraction for each field). DB connections closed in finally blocks. Category validation cross-checks AI output against keyword inference from raw ticket content, overriding on mismatch with confidence cap. No single failure cascades to full shutdown.</div></div></div>
     </div>
   </section>
 
@@ -672,34 +678,34 @@
         <div class="arch-item">
           <div class="arch-item-layer">Layer 01</div>
           <div class="arch-item-title">IMAP Email Ingestion</div>
-          <div class="arch-item-desc">Uses Python's standard <code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL to connect to <code style="font-family:monospace;font-size:0.85em">imap.gmail.com</code>. Reads email credentials and app password from config. Searches for UNSEEN messages since today's date. The <code style="font-family:monospace;font-size:0.85em">email</code> standard library handles MIME parsing, including multipart messages with plain text and HTML parts. Marks emails as <code style="font-family:monospace;font-size:0.85em">\Seen</code> atomically after successful ticket insertion.</div>
+          <div class="arch-item-desc">Uses Python's standard <code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL to connect to <code style="font-family:monospace;font-size:0.85em">imap.gmail.com</code>. Reads email credentials and app password from config. Searches for UNSEEN messages since today's date. The <code style="font-family:monospace;font-size:0.85em">email</code> standard library handles MIME parsing, including multipart messages with plain text and HTML parts. Marks emails as <code style="font-family:monospace;font-size:0.85em">\Seen</code> atomically after successful ticket insertion. Filters self-generated notification emails by subject pattern.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 02</div>
           <div class="arch-item-title">SQL Server Database</div>
-          <div class="arch-item-desc">Connects via <code style="font-family:monospace;font-size:0.85em">pyodbc</code> to a local SQLEXPRESS instance. The connection string is read from config. Three tables handle all persistence: <em>Tickets</em> for the main record, <em>TeamLeadMapping</em> for routing logic, and <em>TicketNotes</em> for the note thread. Each AI processing task creates its own database connection to avoid cross-thread locking and ensure safe concurrent writes.</div>
+          <div class="arch-item-desc">Connects via <code style="font-family:monospace;font-size:0.85em">pyodbc</code> to a local SQLEXPRESS instance. Connection string from config. Three tables: <em>Tickets</em> (main record), <em>TeamLeadMapping</em> (legacy, kept for backward compat), <em>TicketNotes</em> (note thread). Team lead routing now reads from <code style="font-family:monospace;font-size:0.85em">team_leads</code> in config.yaml. Each AI task creates its own DB connection for thread-safe concurrent writes.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 03</div>
-          <div class="arch-item-title">Knowledge Base</div>
-          <div class="arch-item-desc">Plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files in the <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory contain corporate SOPs organized by domain: HR leave policy, payroll procedures, VPN and technology SOPs, and finance invoice workflows. No vector database or external embedding service is required. The hybrid semantic and keyword search keeps the system fully self-contained and portable.</div>
+          <div class="arch-item-title">Knowledge Base & Embeddings</div>
+          <div class="arch-item-desc">Plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files in <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> (HR, Payroll, VPN, Finance). Primary retrieval: semantic embeddings via Ollama <code style="font-family:monospace;font-size:0.85em">nomic-embed-text</code>, cosine similarity, cached by mtime. Fallback: keyword search on terms >4 chars. No vector DB or external embedding service — fully self-contained. Top-K and similarity threshold configurable.</div>
         </div>
       </div>
       <div class="arch-col">
         <div class="arch-item">
           <div class="arch-item-layer">Layer 04</div>
-          <div class="arch-item-title">Ollama Llama 3</div>
-          <div class="arch-item-desc">The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client sends structured prompts to the locally-running Llama 3 model. The system message strictly instructs JSON-only output. The returned object is cleaned, parsed, and validated for the four expected fields. Fallback regex extraction targets each field individually if the full JSON parse fails, ensuring a category and confidence score are always extracted even from partially malformed model output.</div>
+          <div class="arch-item-title">Ollama Llama 3 (Categorization)</div>
+          <div class="arch-item-desc"><code style="font-family:monospace;font-size:0.85em">ollama</code> Python client sends structured prompts to local Llama 3. System message enforces JSON-only output with 4 fields: category (whitelist), subcategory, summary, confidence (0–1). <code style="font-family:monospace;font-size:0.85em">num_ctx=8192</code> handles injected SOP context. Two-attempt retry. Fallback chain: regex extraction → keyword scan → content-based inference (normalized keyword scoring with dominance guard).</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 05</div>
-          <div class="arch-item-title">SMTP Notifications</div>
-          <div class="arch-item-desc">Gmail SMTP with STARTTLS on port 587. Two distinct email types are sent when confidence ≥ 0.9: an operations alert to the <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification_email</span> address configured in <code style="font-family:monospace;font-size:0.85em">config.yaml</code>, and a solution email to the original ticket sender. The solution email embeds relevant extracted content from the  matched <span class="vid-trigger" data-label="Knowledge Base" data-video="2026-06-29 11-39-19.mp4">knowledge base files</span>, giving the sender a concrete answer drawn from official policy.</div>
+          <div class="arch-item-title">Confidence Router & Approval Engine</div>
+          <div class="arch-item-desc">Three-tier routing by confidence: ≥0.9 → auto-resolve: generates AI-rewritten solution email (second Ollama call), sends to sender + ops alert, marks Resolved. 0.7–0.9 → PendingApproval: stages solution, emails team lead for Approve/Reject. 0.7 → Escalated: emails team lead directly. Lead replies parsed (quoted history stripped), decision extracted, custom messages forwarded to employee. All tracked in TicketNotes.</div>
         </div>
         <div class="arch-item">
           <div class="arch-item-layer">Layer 06</div>
-          <div class="arch-item-title">Thread Pool Executor</div>
-          <div class="arch-item-desc">Python's <code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code> handles all AI enrichment asynchronously. The main ingestion loop submits a task and immediately continues polling; it never blocks waiting for Ollama. The pool defaults to 4 workers but can be tuned via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code>. Each worker gets its own database connection, preventing shared-state issues and ensuring safe parallel writes across all concurrent tasks.</div>
+          <div class="arch-item-title">Thread Pool & SMTP</div>
+          <div class="arch-item-desc"><code style="font-family:monospace;font-size:0.85em">ThreadPoolExecutor</code> (default 4 workers) keeps ingestion non-blocking. Each worker gets isolated DB connection. SMTP via <code style="font-family:monospace;font-size:0.85em">smtplib</code> with STARTTLS on 587 (Gmail app password). Sends: acknowledgement on ticket creation, solution emails (auto/approval), ops confidence alerts, team lead notifications (creation/approval/escalation). Config-driven team leads replace DB mapping.</div>
         </div>
       </div>
     </div>
@@ -716,34 +722,34 @@
         <div class="schema-row"><span class="schema-col-name">Subject</span><span class="schema-col-desc">Email subject line</span></div>
         <div class="schema-row"><span class="schema-col-name">Body</span><span class="schema-col-desc">Full parsed email body</span></div>
         <div class="schema-row"><span class="schema-col-name">Sender</span><span class="schema-col-desc">Sender email address</span></div>
-        <div class="schema-row"><span class="schema-col-name">Status</span><span class="schema-col-desc">New → Processed</span></div>
-        <div class="schema-row"><span class="schema-col-name">Category</span><span class="schema-col-desc">AI-derived classification</span></div>
-        <div class="schema-row"><span class="schema-col-name">Subcategory</span><span class="schema-col-desc">AI-derived sub-type</span></div>
+        <div class="schema-row"><span class="schema-col-name">Status</span><span class="schema-col-desc">New → Processed → Resolved / PendingApproval / Escalated / Rejected</span></div>
+        <div class="schema-row"><span class="schema-col-name">Category</span><span class="schema-col-desc">AI-derived: Payroll/Salary, Finance/Invoice, Technology/VPN, HR/Leave</span></div>
+        <div class="schema-row"><span class="schema-col-name">Subcategory</span><span class="schema-col-desc">AI-derived specific issue type</span></div>
         <div class="schema-row"><span class="schema-col-name">Summary</span><span class="schema-col-desc">AI one-sentence summary</span></div>
-        <div class="schema-row"><span class="schema-col-name">AssignedTeamLead</span><span class="schema-col-desc">Mapped from category</span></div>
-        <div class="schema-row"><span class="schema-col-name">Notified</span><span class="schema-col-desc">High-confidence sent flag</span></div>
+        <div class="schema-row"><span class="schema-col-name">AssignedTeamLead</span><span class="schema-col-desc">From config.yaml team_leads mapping</span></div>
+        <div class="schema-row"><span class="schema-col-name">Notified</span><span class="schema-col-desc">Bit flag: high-confidence email sent</span></div>
       </div>
       <div class="schema-table">
-        <div class="schema-table-head"><div class="schema-table-name">TeamLeadMapping</div></div>
+        <div class="schema-table-head"><div class="schema-table-name">TeamLeadMapping (Legacy)</div></div>
         <div class="schema-row"><span class="schema-col-name">Category</span><span class="schema-col-desc">Category name</span></div>
         <div class="schema-row"><span class="schema-col-name">TeamLead</span><span class="schema-col-desc">Lead identifier</span></div>
         <div class="schema-mapping-extras">
-          <div class="schema-mapping-label">Sample Mappings</div>
-          <div class="schema-mapping-pair"><span class="schema-mapping-key">Payroll/Salary</span><span class="schema-mapping-val">TL_PAYROLL</span></div>
-          <div class="schema-mapping-pair"><span class="schema-mapping-key">Finance/Invoice</span><span class="schema-mapping-val">TL_FINANCE</span></div>
-          <div class="schema-mapping-pair"><span class="schema-mapping-key">Technology/VPN</span><span class="schema-mapping-val">TL_TECH</span></div>
-          <div class="schema-mapping-pair"><span class="schema-mapping-key">HR/Leave</span><span class="schema-mapping-val">TL_HR</span></div>
-          <div class="schema-mapping-pair"><span class="schema-mapping-key">Unmatched</span><span class="schema-mapping-val">TL_GENERAL</span></div>
+          <div class="schema-mapping-label">Now Config-Driven (config.yaml → team_leads[])</div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Payroll/Salary</span><span class="schema-mapping-val">TL001 — Team Lead 1</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Finance/Invoice</span><span class="schema-mapping-val">TL002 — Team Lead 2</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Technology/VPN</span><span class="schema-mapping-val">TL003 — Team Lead 3</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">HR/Leave</span><span class="schema-mapping-val">TL004 — Team Lead 4</span></div>
+          <div class="schema-mapping-pair"><span class="schema-mapping-key">Fallback</span><span class="schema-mapping-val">TL_GENERAL</span></div>
         </div>
       </div>
       <div class="schema-table">
         <div class="schema-table-head"><div class="schema-table-name">TicketNotes</div></div>
         <div class="schema-row"><span class="schema-col-name">NoteID</span><span class="schema-col-desc">Auto-increment PK</span></div>
         <div class="schema-row"><span class="schema-col-name">TicketID</span><span class="schema-col-desc">FK → Tickets</span></div>
-        <div class="schema-row"><span class="schema-col-name">NoteType</span><span class="schema-col-desc">UserReply · SystemNote · AgentComment</span></div>
+        <div class="schema-row"><span class="schema-col-name">NoteType</span><span class="schema-col-desc">UserReply · SystemNoteBody · PendingApproval · AgentComment</span></div>
         <div class="schema-row"><span class="schema-col-name">NoteBody</span><span class="schema-col-desc">Note text content</span></div>
-        <div class="schema-row"><span class="schema-col-name">CreatedAt</span><span class="schema-col-desc">Timestamp</span></div>
-        <div class="schema-row"><span class="schema-col-name">CreatedBy</span><span class="schema-col-desc">Email or system name</span></div>
+        <div class="schema-row"><span class="schema-col-name">CreatedAt</span><span class="schema-col-desc">Timestamp (GETDATE())</span></div>
+        <div class="schema-row"><span class="schema-col-name">CreatedBy</span><span class="schema-col-desc">Sender email or system identifier</span></div>
       </div>
     </div>
   </section>
@@ -753,12 +759,13 @@
     <div class="section-meta"><span class="section-meta-num">05</span><span class="section-meta-label">Stack</span></div>
     <div class="section-heading fade-up"><span>Technologies</span></div>
     <div class="tech-grid">
-      <div class="tech-item"><div class="tech-role">Runtime</div><div class="tech-name">Python 3.x</div><div class="tech-desc">Core language. The standard library covers most of the pipeline, including imaplib, email, smtplib, json, re, logging, concurrent.futures, datetime. Only three third-party packages need to be installed.</div></div>
-      <div class="tech-item"><div class="tech-role">AI Inference</div><div class="tech-name">Ollama + Llama 3</div><div class="tech-desc">The <code style="font-family:monospace;font-size:0.85em">ollama</code> Python client connects to your locally running model. No API key, no external data transfer. Llama 3 handles classification, summarization, and confidence scoring.</div></div>
-      <div class="tech-item"><div class="tech-role">Database</div><div class="tech-name">SQL Server</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">pyodbc</code> connects to a local SQLEXPRESS instance via Trusted Connection. Manages Tickets, TeamLeadMapping, and TicketNotes. Thread-safe via per-task connections.</div></div>
-      <div class="tech-item"><div class="tech-role">Email</div><div class="tech-name">IMAP + SMTP</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">imaplib</code> over SSL for reading Gmail. <code style="font-family:monospace;font-size:0.85em">smtplib</code> with STARTTLS on port 587 for sending <span class="vid-trigger" data-label="Notification Email" data-video="notif.mp4">notification</span> and solution emails. Both use Gmail app passwords.</div></div>
-      <div class="tech-item"><div class="tech-role">Configuration</div><div class="tech-name">PyYAML</div><div class="tech-desc">Loads <code style="font-family:monospace;font-size:0.85em">config.yaml</code> at startup: credentials, connection strings, model name, thread pool size, polling intervals. Keep this file outside version control.</div></div>
-      <div class="tech-item"><div class="tech-role">Concurrency</div><div class="tech-name">ThreadPoolExecutor</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">concurrent.futures.ThreadPoolExecutor</code> keeps the ingestion loop non-blocking. Default pool of 4 workers processes multiple tickets simultaneously with isolated database connections.</div></div>
+      <div class="tech-item"><div class="tech-role">Runtime</div><div class="tech-name">Python 3.x</div><div class="tech-desc">Core language. The standard library covers most of the pipeline: imaplib, email, smtplib, json, re, logging, concurrent.futures, datetime, math. Only pyodbc, ollama, pyyaml need install.</div></div>
+      <div class="tech-item"><div class="tech-role">AI Inference</div><div class="tech-name">Ollama + Llama 3</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">ollama</code> Python client to local Llama 3. No API keys, no external data transfer. Handles categorization, summarization, confidence scoring, <em>and</em> solution email rewriting (second call). Runs with <code style="font-family:monospace;font-size:0.85em">num_ctx=8192</code> for large SOP context.</div></div>
+      <div class="tech-item"><div class="tech-role">Embeddings</div><div class="tech-name">Ollama + nomic-embed-text</div><div class="tech-desc">Semantic KB search uses <code style="font-family:monospace;font-size:0.85em">nomic-embed-text</code> via Ollama embeddings endpoint. Cosine similarity in Python (stdlib <code style="font-family:monospace;font-size:0.85em">math</code>). Cached by file mtime — auto-re-embeds on file change. No vector DB required.</div></div>
+      <div class="tech-item"><div class="tech-role">Database</div><div class="tech-name">SQL Server (SQLEXPRESS)</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">pyodbc</code> with Trusted Connection. Tables: Tickets, TeamLeadMapping (legacy), TicketNotes. Per-task connections for thread-safe concurrent writes. Auto-creates TicketNotes table if missing.</div></div>
+      <div class="tech-item"><div class="tech-role">Email</div><div class="tech-name">IMAP + SMTP (Gmail)</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em">imaplib</code> SSL (port 993) for reading. <code style="font-family:monospace;font-size:0.85em">smtplib</code> STARTTLS (587) for sending: acknowledgement, solution emails, ops alerts, team lead notifications (creation/approval/escalation). Gmail app passwords required.</div></div>
+      <div class="tech-item"><div class="tech-role">Configuration</div><div class="tech-name">PyYAML (config.yaml)</div><div class="tech-desc">All runtime config: IMAP/SMTP creds, DB connection, Ollama model + embedding model, thread pool size, KB folder, polling intervals, semantic search params (top_k, min_similarity), team_leads array, logging. Keep out of version control.</div></div>
+      <div class="tech-item"><div class="tech-role">Concurrency</div><div class="tech-name">ThreadPoolExecutor</div><div class="tech-desc"><code style="font-family:monospace;font-size:0.85em"> concurrent.futures.ThreadPoolExecutor</code> (default 4 workers). Ingestion loop non-blocking — submits AI tasks, continues polling. Each worker gets isolated DB connection. Pool size tunable via <code style="font-family:monospace;font-size:0.85em">processing.thread_pool_size</code>.</div></div>
     </div>
   </section>
 
@@ -767,11 +774,11 @@
     <div class="section-meta"><span class="section-meta-num">06</span><span class="section-meta-label">Quickstart</span></div>
     <div class="section-heading fade-up"><span>Get Running</span></div>
     <div class="run-steps">
-      <div class="run-step"><span class="run-num">01</span><div class="run-content"><div class="run-title">Install Dependencies</div><div class="run-desc">Only three packages need to be installed. Everything else ships with Python's standard library and does not require a separate install step.</div><span class="code-block">pip install pyodbc ollama pyyaml</span></div></div>
-      <div class="run-step"><span class="run-num">02</span><div class="run-content"><div class="run-title">Configure config.yaml</div><div class="run-desc">Edit <code style="font-family:monospace;font-size:0.85em">config.yaml</code> with your Gmail address and app password (2FA must be enabled on the account to generate an app password), your SQL Server connection string, the notification email address, and your preferred thread pool size and polling intervals.</div><span class="code-block">imap.email: your@gmail.com<br>imap.app_password: xxxx xxxx xxxx xxxx<br>database.conn_str: "Driver={ODBC Driver 17...}"<br>smtp.notification_email: ops@yourcompany.com<br>processing.thread_pool_size: 4</span></div></div>
-      <div class="run-step"><span class="run-num">03</span><div class="run-content"><div class="run-title">Populate the Knowledge Base</div><div class="run-desc">Add plain <code style="font-family:monospace;font-size:0.85em">.txt</code> files to the <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code> directory. Each file should cover one policy domain: HR leave policies, payroll procedures, VPN procedures, finance invoice workflows. The hybrid search handles retrieval automatically. More specific policy text leads to better AI context and higher confidence scores.</div></div></div>
-      <div class="run-step"><span class="run-num">04</span><div class="run-content"><div class="run-title">Start Ollama with Llama 3</div><div class="run-desc">Ensure Ollama is running locally with the Llama 3 model available. The pipeline connects to the Ollama client automatically. No configuration required beyond ensuring the service is running.</div><span class="code-block">ollama pull llama3<br>ollama serve</span></div></div>
-      <div class="run-step"><span class="run-num">05</span><div class="run-content"><div class="run-title">Launch the Pipeline</div><div class="run-desc">Start the pipeline. It will run continuously, processing emails as they arrive. Watch the logs for ticket creation, AI enrichment results, confidence scores, and email dispatch confirmations. Press Ctrl+C for a graceful shutdown when needed.</div><span class="code-block">python run_pipeline.py</span></div></div>
+      <div class="run-step"><span class="run-num">01</span><div class="run-content"><div class="run-title">Install Dependencies</div><div class="run-desc">Only three packages need to be installed. Everything else ships with Python's standard library.</div><span class="code-block">pip install pyodbc ollama pyyaml</span></div></div>
+      <div class="run-step"><span class="run-num">02</span><div class="run-content"><div class="run-title">Configure config.yaml</div><div class="run-desc">Edit <code style="font-family:monospace;font-size:0.85em">config.yaml</code> with all settings. Required sections: <em>imap</em> (Gmail email + app password), <em>smtp</em> (same creds + notification_email), <em>database</em> (pyodbc connection string), <em>ollama</em> (model + embedding_model), <em>processing</em> (thread_pool_size, kb folder, semantic_top_k, semantic_min_similarity, polling intervals), <em>team_leads</em> (array of {id, name, email, categories[]}), <em>logging</em> (level, optional file).</div><span class="code-block">imap.email: your@gmail.com<br>imap.app_password: xxxx xxxx xxxx xxxx<br>smtp.notification_email: ops@company.com<br>database.conn_str: "Driver={ODBC Driver 17...}"<br>ollama.embedding_model: nomic-embed-text<br>team_leads: [{id: TL001, name: "...", email: "...", categories: ["Payroll / Salary"]}, ...]<br>processing.semantic_top_k: 2<br>processing.semantic_min_similarity: 0.55</span></div></div>
+      <div class="run-step"><span class="run-num">03</span><div class="run-content"><div class="run-title">Populate the Knowledge Base</div><div class="run-desc">Add <code style="font-family:monospace;font-size:0.85em">.txt</code> files to <code style="font-family:monospace;font-size:0.85em">knowledge_base/</code>. One file per domain: HR/Leave, Payroll/Salary, Technology/VPN, Finance/Invoice. Semantic search uses embeddings (cached by mtime — edits auto-pick up). Keyword fallback covers gaps. More specific policy text = higher AI confidence.</div></div></div>
+      <div class="run-step"><span class="run-num">04</span><div class="run-content"><div class="run-title">Start Ollama with Required Models</div><div class="run-desc">Pull both Llama 3 (categorization) and nomic-embed-text (embeddings). The pipeline uses both automatically via the Ollama client.</div><span class="code-block">ollama pull llama3<br>ollama pull nomic-embed-text<br>ollama serve</span></div></div>
+      <div class="run-step"><span class="run-num">05</span><div class="run-content"><div class="run-title">Launch the Pipeline</div><div class="run-desc">Start the pipeline. Runs continuously, poll interval configurable. Logs show: ticket creation, KB search matches, AI categorization with confidence, routing, email dispatches (ack, solution, approval request, escalation, ops alert). Ctrl+C for graceful shutdown.</div><span class="code-block">python run_pipeline.py</span></div></div>
     </div>
   </section>
 
@@ -780,11 +787,14 @@
     <div class="section-meta"><span class="section-meta-num">07</span><span class="section-meta-label">Roadmap</span></div>
     <div class="section-heading fade-up"><span>Planned</span></div>
     <div class="future-grid">
-      <div class="future-item"><div class="future-num">01</div><div class="future-text">Agent interface for manually adding <em>AgentComment</em> notes to any ticket via API or dashboard.</div></div>
-      <div class="future-item"><div class="future-num">02</div><div class="future-text">API endpoint and view to list all notes for a given Ticket ID, ordered by timestamp.</div></div>
-      <div class="future-item"><div class="future-num">03</div><div class="future-text">Push notifications to the assigned team lead when a new note is added to one of their tickets.</div></div>
-      <div class="future-item"><div class="future-num">04</div><div class="future-text">Full note history included in ticket views, reports, and exported records for audit trails.</div></div>
-      <div class="future-item"><div class="future-num">05</div><div class="future-text">IMAP IDLE full implementation for true real-time push, eliminating any polling latency.</div></div>
+      <div class="future-item"><div class="future-num">01</div><div class="future-text">Web dashboard / API for viewing tickets, notes, confidence scores, and manual <em>AgentComment</em> entry.</div></div>
+      <div class="future-item"><div class="future-num">02</div><div class="future-text">REST API endpoints for ticket CRUD, note listing by Ticket ID, and lead assignment overrides.</div></div>
+      <div class="future-item"><div class="future-num">03</div><div class="future-text">Push notifications (e.g., webhook, Slack, Teams) to team leads on new tickets or note additions.</div></div>
+      <div class="future-item"><div class="future-num">04</div><div class="future-text">Full note history export for audit trails, reporting, and compliance.</div></div>
+      <div class="future-item"><div class="future-num">05</div><div class="future-text">Full IMAP IDLE implementation for true real-time push, eliminating polling latency.</div></div>
+      <div class="future-item"><div class="future-num">06</div><div class="future-text">Multi-language SOP support with language detection and localized solution emails.</div></div>
+      <div class="future-item"><div class="future-num">07</div><div class="future-text">Confidence calibration dashboard: track accuracy per category, tune thresholds per team.</div></div>
+      <div class="future-item"><div class="future-num">08</div><div class="future-text">Escalation SLA timers: auto-reassign or alert if ticket unresolved past threshold.</div></div>
     </div>
   </section>
 
@@ -792,9 +802,9 @@
   <footer>
     <div>
       <div class="footer-logo">MAILSYS | AI Email Ticketing</div>
-      <div class="footer-sub">Python 3 · Ollama Llama 3 · SQL Server · Gmail IMAP/SMTP</div>
+      <div class="footer-sub">Python 3 · Ollama Llama 3 + nomic-embed-text · SQL Server · Gmail IMAP/SMTP</div>
     </div>
-    <div class="footer-right">Continuous · Local AI · No external APIs<br>ThreadPoolExecutor · pyodbc · PyYAML</div>
+    <div class="footer-right">Continuous · Local AI · No external APIs<br>Three-tier confidence · Semantic KB · ThreadPoolExecutor · pyodbc · PyYAML</div>
   </footer>
 
   <script>
@@ -810,9 +820,9 @@
         { pct: 5,  msg: 'Hover over underlined elements to view video showcase' },
         { pct: 20,  msg: 'Hover over underlined elements to view video showcase' },
         { pct: 30,  msg: 'Hover over underlined elements to view video showcase' },
-        { pct: 40,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 40,  msg: 'Double Click To View Full Screen ' },
         { pct: 60,  msg: 'Hover over underlined elements to view video showcase' },
-        { pct: 80,  msg: 'Hover over underlined elements to view video showcase' },
+        { pct: 80,  msg: 'Double Click To View Full Screen ' },
         { pct: 100, msg: 'READY' }
       ];
 
