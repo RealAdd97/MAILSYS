@@ -13,6 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 import datetime
 import smtplib
 import re
+import math
 
 today = datetime.date.today().strftime("%d-%b-%Y")  # Format: 18-Jun-2026
 
@@ -36,27 +37,42 @@ def load_config():
             "conn_str": "Driver={ODBC Driver 17 for SQL Server};Server=localhost\\SQLEXPRESS;Database=SupportAutomation;Trusted_Connection=yes;"
         },
         "ollama": {
-            "model": "llama3"
+            "model": "llama3",
+            "embedding_model": "nomic-embed-text"
         },
         "processing": {
             "thread_pool_size": 4,
             "knowledge_base_folder": "knowledge_base",
             "idle_timeout": 30,
-            "fallback_polling_interval": 10
+            "fallback_polling_interval": 10,
+            "semantic_top_k": 2,
+            "semantic_min_similarity": 0.55
         },
         "logging": {
             "level": "INFO",
             "file": ""
-        }
+        },
+        "team_leads": [
+            {"id": "TL001", "name": "Team Lead 1", "email": "tl001@company.com",
+             "categories": ["Payroll / Salary"]},
+            {"id": "TL002", "name": "Team Lead 2", "email": "tl002@company.com",
+             "categories": ["Finance / Invoice"]},
+            {"id": "TL003", "name": "Team Lead 3", "email": "tl003@company.com",
+             "categories": ["Technology / VPN"]},
+            {"id": "TL004", "name": "Team Lead 4", "email": "tl004@company.com",
+             "categories": ["HR / Leave"]}
+        ]
     }
     try:
         with open(config_path, 'r') as f:
-            user_config = yaml.safe_load(f)
+            user_config = yaml.safe_load(f) or {}
         for key in default_config:
-            if key in user_config:
-                default_config[key].update(user_config[key])
-            else:
+            if key not in user_config:
                 user_config[key] = default_config[key]
+            elif isinstance(default_config[key], dict) and isinstance(user_config[key], dict):
+                merged = dict(default_config[key])
+                merged.update(user_config[key])
+                user_config[key] = merged
         return user_config
     except FileNotFoundError:
         logging.warning("Config file not found, using default configuration")
@@ -66,10 +82,8 @@ def load_config():
         return default_config
 
 
-# Load configuration
 config = load_config()
 
-# Setup logging
 log_level = getattr(logging, config['logging']['level'].upper(), logging.INFO)
 log_handlers = [logging.StreamHandler()]
 if config['logging']['file']:
@@ -82,40 +96,125 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def extract_topic_semantic(ticket_content):
-    """
-    Phase A: Use local Llama 3 via Ollama to extract the core topic/subject
-    from the ticket. Returns a lower-case topic string, or None on failure.
-    """
-    try:
-        logger.info(" -> [Step 6B Semantics] Querying Ollama for topic extraction...")
-        prompt = (
-            "You are a support ticket topic extractor. "
-            "Given the support email below, output ONLY a single lowercase word or short phrase "
-            "(max 3 words) that best captures the core topic. "
-            "No explanation, no punctuation, just the topic.\n\n"
-            f"Email:\n{ticket_content}\n\nTopic:"
-        )
-        response = ollama.chat(
-            model=config['ollama']['model'],
-            messages=[{'role': 'user', 'content': prompt}],
-            options={'temperature': 0.0}
-        )
-        topic = response['message']['content'].strip().lower()
-        topic = topic.strip('"\'').rstrip('.')
-        if topic:
-            logger.debug(f"    [Semantic Topic] {topic}")
-            return topic
-    except Exception as e:
-        logger.debug(f"    [Semantic Fallback] Ollama topic extraction failed: {e}")
+def get_team_lead_for_category(category):
+    for tl in config.get('team_leads', []):
+        if category in tl.get('categories', []):
+            return tl
+    logger.warning(f"No team lead configured for category '{category}'")
     return None
 
 
+def send_plain_email(to_address, subject, body):
+    try:
+        smtp_config = config['smtp']
+        msg = f"Subject: {subject}\n\n{body}\n"
+        server = smtplib.SMTP(smtp_config['server'], smtp_config['port'])
+        server.starttls()
+        server.login(smtp_config['email'], smtp_config['app_password'])
+        server.sendmail(smtp_config['email'], to_address, msg.encode('utf-8'))
+        server.quit()
+        logger.info(f"Sent email '{subject}' to {to_address}")
+    except Exception as e:
+        logger.error(f"Failed to send email '{subject}' to {to_address}: {e}")
+        raise
+
+
+def extract_sender_name(sender):
+    name_part = re.split(r'[<@]', sender)[0].strip().strip('"')
+    return name_part if name_part else sender
+
+
+def extract_sender_email(sender):
+    match = re.search(r'[\w\.\-+]+@[\w\.\-]+', sender)
+    return match.group(0) if match else sender
+
+
+def get_embedding(text):
+    """Get a vector embedding for text using Ollama's embeddings endpoint."""
+    try:
+        response = ollama.embeddings(
+            model=config['ollama'].get('embedding_model', 'nomic-embed-text'),
+            prompt=text
+        )
+        return response.get('embedding')
+    except Exception as e:
+        logger.debug(f"    [Embedding Error] Failed to get embedding: {e}")
+        return None
+
+
+def cosine_similarity(vec_a, vec_b):
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    norm_a = math.sqrt(sum(a * a for a in vec_a))
+    norm_b = math.sqrt(sum(b * b for b in vec_b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
+
+# In-memory cache of KB document embeddings, keyed by filename.
+# Each entry is (mtime, embedding, policy_text) so edited files are
+# automatically re-embedded on the next search.
+_kb_embedding_cache = {}
+
+
+def _load_kb_embeddings(kb_folder):
+    embeddings = {}
+    for filename in os.listdir(kb_folder):
+        if not filename.endswith(".txt"):
+            continue
+        file_path = os.path.join(kb_folder, filename)
+        mtime = os.path.getmtime(file_path)
+        cached = _kb_embedding_cache.get(filename)
+        if cached and cached[0] == mtime:
+            embeddings[filename] = (cached[1], cached[2])
+            continue
+        with open(file_path, "r", encoding="utf-8") as f:
+            policy_text = f.read()
+        embedding = get_embedding(policy_text)
+        if embedding is None:
+            continue
+        _kb_embedding_cache[filename] = (mtime, embedding, policy_text)
+        embeddings[filename] = (embedding, policy_text)
+    return embeddings
+
+
+def semantic_search_policies(kb_folder, ticket_content, top_k=None, min_similarity=None):
+    """Rank knowledge-base documents by cosine similarity between their embedding
+    and the ticket's embedding, instead of relying on literal word overlap."""
+    top_k = top_k if top_k is not None else config['processing'].get('semantic_top_k', 2)
+    min_similarity = (
+        min_similarity if min_similarity is not None
+        else config['processing'].get('semantic_min_similarity', 0.55)
+    )
+
+    query_embedding = get_embedding(ticket_content)
+    if query_embedding is None:
+        logger.debug("    [Semantic Search] No query embedding available; skipping.")
+        return ""
+
+    kb_embeddings = _load_kb_embeddings(kb_folder)
+    if not kb_embeddings:
+        return ""
+
+    scored = []
+    for filename, (embedding, policy_text) in kb_embeddings.items():
+        score = cosine_similarity(query_embedding, embedding)
+        scored.append((score, filename, policy_text))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    context_payload = ""
+    for score, filename, policy_text in scored[:top_k]:
+        if score < min_similarity:
+            continue
+        logger.debug(f"    [*] Semantic match: {filename} (similarity={score:.3f})")
+        context_payload += f"\n--- Context Document: {filename} (similarity={score:.2f}) ---\n{policy_text}\n"
+
+    return context_payload
+
+
 def keyword_search_policies(kb_folder, ticket_content):
-    """
-    Phase B: Traditional keyword-matching fallback.
-    Scans the knowledge_base folder for policy files that share keywords with the ticket.
-    """
     context_payload = ""
     keywords = ticket_content.lower().split()
     for filename in os.listdir(kb_folder):
@@ -130,11 +229,6 @@ def keyword_search_policies(kb_folder, ticket_content):
 
 
 def extract_solution_details(sop_text):
-    """
-    Extract solution details from SOP text.
-    Looks for '- Description:' and '- Handling Instructions:' sections (case-insensitive)
-    and returns them as formatted text, capturing FULL multi-line content.
-    """
     details = []
 
     desc_match = re.search(
@@ -168,16 +262,7 @@ def extract_solution_details(sop_text):
     return "\n\n".join(details)
 
 
-# ==========================================
-# 6B: KNOWLEDGE SEARCH ENGINE
-# ==========================================
 def search_local_knowledge_base(ticket_content):
-    """
-    Hybrid Knowledge Search Engine (Step 6B).
-    1. Attempts semantic topic extraction via Ollama.
-    2. Falls back to keyword matching if Ollama is unavailable.
-    3. Merges results from both phases into a single context payload.
-    """
     kb_folder = config['processing']['knowledge_base_folder']
     context_payload = ""
 
@@ -187,32 +272,15 @@ def search_local_knowledge_base(ticket_content):
 
     logger.info(f" -> [Step 6B] Scanning local policy files for relevant context...")
 
-    # --- Phase A: Semantic Topic Extraction ---
-    semantic_topic = extract_topic_semantic(ticket_content)
-    if semantic_topic:
-        for filename in os.listdir(kb_folder):
-            if filename.endswith(".txt"):
-                file_path = os.path.join(kb_folder, filename)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    policy_text = f.read()
-                    if semantic_topic in policy_text.lower():
-                        logger.debug(f"    [*] Semantic policy match: {filename}")
-                        context_payload += f"\n--- Context Document: {filename} ---\n{policy_text}\n"
+    context_payload = semantic_search_policies(kb_folder, ticket_content)
 
-    # --- Phase B: Keyword Fallback ---
-    keyword_payload = keyword_search_policies(kb_folder, ticket_content)
-    if keyword_payload:
-        context_payload = context_payload + keyword_payload if keyword_payload not in context_payload else context_payload
+    if not context_payload:
+        logger.debug("    [Semantic Search] No semantic matches above threshold; falling back to keyword search.")
+        context_payload = keyword_search_policies(kb_folder, ticket_content)
 
     return context_payload if context_payload else "No specific matching corporate SOP found."
 
 
-# ==========================================
-# CATEGORY INFERENCE FROM TICKET CONTENT
-# ==========================================
-
-# Keyword lists for each category — checked against the raw ticket text,
-# not the AI output, so they are immune to model hallucinations.
 CATEGORY_KEYWORDS = {
     "Technology / VPN": [
         "vpn", "virtual private network", "remote access", "secure connection",
@@ -242,29 +310,7 @@ CATEGORY_KEYWORDS = {
 }
 
 
-# FIX 2 & 3: Require a minimum score AND a clear margin of victory before
-# overriding the AI result. Scores are normalised by keyword-list size so
-# the larger Technology/VPN list can't out-vote the others on volume alone.
 def infer_category_from_ticket(ticket_text, min_score: int = 2, dominance_ratio: float = 1.5):
-    """
-    Infer the most likely category by scoring the raw ticket text against
-    keyword lists for each category.
-
-    Two guards prevent false overrides:
-      - min_score: the winning category must have at least this many raw hits.
-        A single incidental keyword match (e.g. 'payment' in a payroll email)
-        is not enough to override the AI's judgement.
-      - dominance_ratio: the winner's normalised score must be at least
-        dominance_ratio × the runner-up's score. If the ticket is genuinely
-        ambiguous the AI result is preserved.
-
-    Scores are normalised by keyword-list length so a category with more
-    keywords (Technology/VPN has 24 vs ~17 for the others) does not get an
-    unfair advantage from pure list size.
-
-    Returns the winning category string, or None when evidence is too weak
-    or too ambiguous to justify overriding the model.
-    """
     ticket_lower = ticket_text.lower()
 
     raw_scores = {cat: 0 for cat in CATEGORY_KEYWORDS}
@@ -273,7 +319,6 @@ def infer_category_from_ticket(ticket_text, min_score: int = 2, dominance_ratio:
             if kw in ticket_lower:
                 raw_scores[cat] += 1
 
-    # Normalise by list size so larger lists don't have an unfair advantage
     normalised_scores = {
         cat: raw_scores[cat] / len(CATEGORY_KEYWORDS[cat])
         for cat in raw_scores
@@ -286,7 +331,6 @@ def infer_category_from_ticket(ticket_text, min_score: int = 2, dominance_ratio:
     best_cat, best_norm_score = sorted_scores[0]
     second_norm_score = sorted_scores[1][1] if len(sorted_scores) > 1 else 0
 
-    # Guard 1: not enough raw keyword hits — don't override
     if raw_scores[best_cat] < min_score:
         logger.debug(
             f"    [Category Guard] Raw score {raw_scores[best_cat]} < min_score {min_score}. "
@@ -294,7 +338,6 @@ def infer_category_from_ticket(ticket_text, min_score: int = 2, dominance_ratio:
         )
         return None
 
-    # Guard 2: win margin too small — ticket is ambiguous, don't override
     if second_norm_score > 0 and (best_norm_score / second_norm_score) < dominance_ratio:
         logger.debug(
             f"    [Category Guard] Dominance ratio "
@@ -306,19 +349,12 @@ def infer_category_from_ticket(ticket_text, min_score: int = 2, dominance_ratio:
     return best_cat
 
 
-# ==========================================
-# 1. CENTRAL CONFIGURATIONS
-# ==========================================
-
 def clean_text(text):
     if isinstance(text, bytes):
         return text.decode('utf-8', errors='ignore')
     return text
 
 
-# ==========================================
-# PHASE 1: EMAIL INGESTION (Steps 2 & 3)
-# ==========================================
 def fetch_latest_unread_email():
     try:
         logger.info("\n--- [Step 2] Checking Mailbox for New Tickets ---")
@@ -342,62 +378,206 @@ def fetch_latest_unread_email():
             mail.logout()
             return None
 
-        logger.info(f"Found {len(email_ids)} unread email(s). Fetching the latest...")
-        latest_email_id = email_ids[-1]
-        status, msg_data = mail.fetch(latest_email_id, '(RFC822)')
+        logger.info(f"Found {len(email_ids)} unread email(s). Processing oldest-first...")
 
-        ticket_id = None
+        new_ticket_id = None
 
-        for response_part in msg_data:
-            if isinstance(response_part, tuple):
-                msg = email.message_from_bytes(response_part[1])
+        for current_email_id in email_ids:
+            status, msg_data = mail.fetch(current_email_id, '(RFC822)')
 
-                subject = clean_text(decode_header(msg["Subject"])[0][0])
-                sender = clean_text(decode_header(msg["From"])[0][0])
+            ticket_id = None
 
-                body = ""
-                if msg.is_multipart():
-                    for part in msg.walk():
-                        if part.get_content_type() == "text/plain" and "attachment" not in str(part.get("Content-Disposition")):
-                            body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
-                            break
-                else:
-                    body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
 
-                reply_ticket_id = extract_ticket_id_from_subject(subject)
-                if reply_ticket_id:
-                    add_ticket_note(reply_ticket_id, 'UserReply', body, sender)
-                    logger.info(f"Added UserReply note to ticket {reply_ticket_id} from email {latest_email_id.decode()}")
-                    mail.store(latest_email_id, '+FLAGS', '\\Seen')
-                    mail.logout()
-                    return None
+                    subject = clean_text(decode_header(msg["Subject"])[0][0])
+                    sender = clean_text(decode_header(msg["From"])[0][0])
 
-                ticket_id = f"INC-2026-{random.randint(1000, 9999)}"
+                    body = ""
+                    if msg.is_multipart():
+                        for part in msg.walk():
+                            if part.get_content_type() == "text/plain" and "attachment" not in str(part.get("Content-Disposition")):
+                                body = part.get_payload(decode=True).decode('utf-8', errors='ignore')
+                                break
+                    else:
+                        body = msg.get_payload(decode=True).decode('utf-8', errors='ignore')
 
-                conn = pyodbc.connect(config['database']['conn_str'])
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO Tickets (TicketID, Subject, Body, Sender, Status) VALUES (?, ?, ?, ?, 'New')",
-                    ticket_id, subject, body.strip(), sender
-                )
-                conn.commit()
-                logger.info(f"-> [Step 3] Logged {ticket_id} to Database successfully.")
+                    approval_ticket_id = extract_ticket_id_from_approval_subject(subject)
+                    if approval_ticket_id:
+                        handle_team_lead_approval_reply(approval_ticket_id, body, sender)
+                        logger.info(f"Processed team lead approval reply for ticket {approval_ticket_id} from email {current_email_id.decode()}")
+                        mail.store(current_email_id, '+FLAGS', '\\Seen')
+                        continue
 
-                mail.store(latest_email_id, '+FLAGS', '\\Seen')
-                cursor.close()
-                conn.close()
+                    escalation_ticket_id = extract_ticket_id_from_escalation_subject(subject)
+                    if escalation_ticket_id:
+                        handle_team_lead_escalation_reply(escalation_ticket_id, body, sender)
+                        logger.info(f"Processed team lead escalation response for ticket {escalation_ticket_id} from email {current_email_id.decode()}")
+                        mail.store(current_email_id, '+FLAGS', '\\Seen')
+                        continue
+
+                    reply_ticket_id = extract_ticket_id_from_subject(subject)
+                    if reply_ticket_id:
+                        add_ticket_note(reply_ticket_id, 'UserReply', body, sender)
+                        logger.info(f"Added UserReply note to ticket {reply_ticket_id} from email {current_email_id.decode()}")
+                        mail.store(current_email_id, '+FLAGS', '\\Seen')
+                        continue
+
+                    ticket_id = f"INC-2026-{random.randint(1000, 9999)}"
+
+                    conn = pyodbc.connect(config['database']['conn_str'])
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO Tickets (TicketID, Subject, Body, Sender, Status) VALUES (?, ?, ?, ?, 'New')",
+                        ticket_id, subject, body.strip(), sender
+                    )
+                    conn.commit()
+                    logger.info(f"-> [Step 3] Logged {ticket_id} to Database successfully.")
+
+                    mail.store(current_email_id, '+FLAGS', '\\Seen')
+                    cursor.close()
+                    conn.close()
+
+                    try:
+                        sender_email_addr = extract_sender_email(sender)
+                        send_plain_email(
+                            to_address=sender_email_addr,
+                            subject=f"Ticket created [{ticket_id}]",
+                            body=(
+                                f"Thank you for contacting support.\n\n"
+                                f"Your ticket has been created [{ticket_id}].\n"
+                                f"We will get back to you as soon as possible."
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send acknowledgement email for {ticket_id}: {e}")
+
+                    # Only the first newly-created ticket in this batch is handed
+                    # back for immediate AI processing; the rest will be picked
+                    # up the same way the next time a new ticket is created.
+                    if new_ticket_id is None:
+                        new_ticket_id = ticket_id
 
         mail.logout()
-        return ticket_id
+        return new_ticket_id
 
     except Exception as e:
         logger.error(f"Ingestion Error: {e}")
         return None
+def generate_user_facing_solution(ticket_summary, category, subcategory, sop_text,sender=None):
+    sender_name = None
+    if sender:
+        name_part = re.split(r'[<@]', sender)[0].strip().strip('"')
+        if name_part:
+            sender_name = name_part.split()[0].capitalize()
+
+    greeting = f"Hi {sender_name}," if sender_name else "Hi there,"
+    no_sop_messages = [
+        "No specific matching corporate SOP found.",
+        "No specific corporate SOP found."
+    ]
+    sop_available = sop_text and not any(msg in sop_text for msg in no_sop_messages)
+
+    if sop_available:
+        prompt = (
+            f"- Start with exactly this greeting on its own line, then a blank line: '{greeting}'\n"
+"- End with exactly: 'Best regards,\\nCustomer Support Team'\n"
+            "You are a friendly customer support agent writing a solution email directly to an employee.\n"
+            "Your job is to rewrite the internal SOP guidance below into a clear, warm, step-by-step reply "
+            "that the employee can follow themselves to resolve their issue.\n\n"
+            "Rules:\n"
+            "- Use Dates and Times mentioned in the original email to formulate a timeline of events in your response.\n"
+            "- Dont NOT use Dear or Hi — just start with a friendly sentence.\n"
+            "- Write directly to the employee using 'you' (e.g. 'Please try the following steps').\n"
+            "- Do NOT mention internal terms like 'SOP', 'Team Lead', 'routing', 'policy document', or 'handling instructions'.\n"
+            "- Do NOT include any internal staff notes or escalation procedures.\n"
+            "- Use simple, plain English. No jargon.\n"
+            "- Format as a short intro sentence, then a numbered step-by-step list (max 6 steps).\n"
+            "- End with one reassuring sentence telling them to reply if the steps don't resolve the issue.\n"
+            "- Keep the total response under 200 words.\n\n"
+            "- Dont NOT use best regards or email closings at all"
+            f"Issue type: {category} — {subcategory}\n"
+            f"Issue summary: {ticket_summary}\n\n"
+            f"Internal SOP guidance:\n{sop_text}\n\n"
+            "User-facing solution:"
+        )
+    else:
+        prompt = (
+            f"- Start with exactly this greeting on its own line, then a blank line: '{greeting}'\n"
+"- End with exactly: 'Best regards,\\nCustomer Support Team'\n"
+            "You are a friendly customer support agent writing a solution email directly to an employee.\n"
+            "No specific policy document was found, so use your general knowledge to give helpful first steps.\n\n"
+            "Rules:\n"
+            "- Write directly to the employee using 'you'.\n"
+            "- Provide 3-5 practical self-service steps they can try right now.\n"
+            "- Use simple, plain English. No jargon.\n"
+            "- Format as a short intro sentence, then a numbered list.\n"
+            "- End by letting them know a support agent will follow up if the steps don't help.\n"
+            "- Keep the total response under 180 words.\n\n"
+            f"Issue type: {category} — {subcategory}\n"
+            f"Issue summary: {ticket_summary}\n\n"
+            "User-facing solution: "
+        )
+
+    try:
+        logger.info(f" -> [Email] Generating user-facing solution via Ollama (sop_available={sop_available})...")
+        response = ollama.chat(
+            model=config['ollama']['model'],
+            messages=[{'role': 'user', 'content': prompt}],
+            options={'temperature': 0.3}
+        )
+        solution = response['message']['content'].strip()
+        logger.debug(f"    [Email] User-facing solution generated ({len(solution)} chars)")
+        return solution
+    except Exception as e:
+        logger.warning(f"    [Email] Ollama unavailable for solution rewrite: {e}. Using fallback.")
+        return (
+            "Please try the following steps to resolve your issue:\n\n"
+            "1. Check that your details and credentials are correct.\n"
+            "2. Restart any relevant applications or systems.\n"
+            "3. If the issue persists, reply to this email with any error messages or screenshots.\n\n"
+            "A support agent will follow up with you shortly."
+        )
 
 
-# ==========================================
-# PHASE 2: AI BRAIN & ROUTING (Steps 5 & 6A)
-# ==========================================
+def send_ai_response_email(ticket_id, category, subcategory, summary, confidence, assigned_tl, sender, matched_corporate_sop):
+    try:
+        smtp_config = config['smtp']
+
+        user_solution = generate_user_facing_solution(
+            ticket_summary=summary,
+            category=category,
+            subcategory=subcategory,
+            sop_text=matched_corporate_sop,
+            sender=sender
+        )
+
+        msg = f"""Subject: Re: Your Support Request Ticket {ticket_id}
+
+
+
+{user_solution}
+
+---
+Your ticket reference: {ticket_id}
+If you need further help, simply reply to this email and our team will pick it up.
+
+— AI Ticketing Service
+"""
+        logger.debug(f"Attempting to send solution email for ticket {ticket_id} to {sender}")
+        server = smtplib.SMTP(smtp_config['server'], smtp_config['port'])
+        server.starttls()
+        server.login(smtp_config['email'], smtp_config['app_password'])
+        server.sendmail(smtp_config['email'], sender, msg.encode('utf-8'))
+        server.quit()
+        logger.info(f"Sent solution email for ticket {ticket_id} (confidence: {confidence:.2f})")
+        return user_solution
+    except Exception as e:
+        logger.error(f"Failed to send solution email for ticket {ticket_id}: {e}")
+        raise
+
+
 def process_ticket_with_ai(ticket_id):
     if not ticket_id:
         return
@@ -417,11 +597,17 @@ def process_ticket_with_ai(ticket_id):
 
         combined_ticket_text = f"{subject} {email_body}"
 
-        # Run Step 6B: search corporate knowledge base
         matched_corporate_sop = search_local_knowledge_base(combined_ticket_text)
 
-        # FIX 1: One concrete example per category so the model has an equal
-        # anchor for each one and does not bias high confidence toward HR/Leave.
+        MAX_SOP_CHARS = 4000
+        if len(matched_corporate_sop) > MAX_SOP_CHARS:
+            logger.warning(
+                "Matched SOP context is %d chars, truncating to %d to avoid crowding out the "
+                "model's context window.",
+                len(matched_corporate_sop), MAX_SOP_CHARS
+            )
+            matched_corporate_sop = matched_corporate_sop[:MAX_SOP_CHARS] + "\n...[truncated]"
+
         system_instruction = (
             "You are an AI Support Ticket Processor. Analyze the support email using the provided Corporate Policy Context.\n"
             "You MUST output ONLY a valid JSON object and nothing else. Do not include any explanations, analysis, or additional text.\n"
@@ -442,41 +628,73 @@ def process_ticket_with_ai(ticket_id):
             f"Customer Email:\n{email_body}"
         )
 
-        logger.info("Querying local Llama 3 model with injected policy context...")
-        response = ollama.chat(
-            model=config['ollama']['model'],
-            messages=[
-                {'role': 'system', 'content': system_instruction},
-                {'role': 'user', 'content': user_payload}
-            ],
-            options={'temperature': 0.0}
-        )
+        VALID_CATEGORIES = {'Payroll / Salary', 'Finance / Invoice', 'Technology / VPN', 'HR / Leave'}
+        MAX_AI_ATTEMPTS = 2
+        ai_data = None
+        ai_output = ""
 
-        ai_output = response['message']['content']
-        print(f"Raw AI Output Received: {ai_output}")
+        for attempt in range(1, MAX_AI_ATTEMPTS + 1):
+            logger.info(
+                "Querying local Llama 3 model with injected policy context... (attempt %d/%d)",
+                attempt, MAX_AI_ATTEMPTS
+            )
+            response = ollama.chat(
+                model=config['ollama']['model'],
+                messages=[
+                    {'role': 'system', 'content': system_instruction},
+                    {'role': 'user', 'content': user_payload}
+                ],
+                format='json',
+                # num_ctx is bumped from Ollama's 2048-token default so the injected
+                # SOP context + email body can't silently push the instructions/schema
+                # out of the model's effective context window.
+                options={'temperature': 0.0, 'num_ctx': 8192}
+            )
 
-        clean_json_str = ai_output.strip()
+            ai_output = response['message']['content']
+            print(f"Raw AI Output Received (attempt {attempt}): {ai_output}")
 
-        # --- JSON extraction from AI output ---
-        if "```json" in clean_json_str:
-            clean_json_str = clean_json_str.split("```json")[1].split("```")[0].strip()
-        elif "```" in clean_json_str:
-            clean_json_str = clean_json_str.split("```")[1].split("```")[0].strip()
-        else:
+            clean_json_str = ai_output.strip()
+            if "```json" in clean_json_str:
+                clean_json_str = clean_json_str.split("```json")[1].split("```")[0].strip()
+            elif "```" in clean_json_str:
+                clean_json_str = clean_json_str.split("```")[1].split("```")[0].strip()
+            else:
+                start_idx = clean_json_str.find("{")
+                end_idx = clean_json_str.rfind("}") + 1
+                if start_idx != -1 and end_idx != 0 and end_idx > start_idx:
+                    clean_json_str = clean_json_str[start_idx:end_idx]
+
+            try:
+                parsed = json.loads(clean_json_str)
+                if isinstance(parsed, dict) and parsed.get('category') in VALID_CATEGORIES:
+                    ai_data = parsed
+                    logger.info("AI returned usable JSON on attempt %d.", attempt)
+                    break
+                else:
+                    logger.warning(
+                        "Attempt %d: AI returned syntactically valid JSON but missing/invalid 'category': %s",
+                        attempt, clean_json_str
+                    )
+            except json.JSONDecodeError as e:
+                logger.warning("Attempt %d: AI output was not valid JSON: %s", attempt, e)
+
+            if attempt < MAX_AI_ATTEMPTS:
+                logger.info("Retrying Ollama call (attempt %d/%d)...", attempt + 1, MAX_AI_ATTEMPTS)
+
+        if ai_data is None:
+            clean_json_str = ai_output.strip()
             start_idx = clean_json_str.find("{")
             end_idx = clean_json_str.rfind("}") + 1
             if start_idx != -1 and end_idx != 0 and end_idx > start_idx:
                 clean_json_str = clean_json_str[start_idx:end_idx]
             else:
-                # -------------------------------------------------------
-                # FALLBACK: AI did not return JSON — extract fields from
-                # the free-text response, then validate the category against
-                # the raw ticket content so we never default to a wrong team.
-                # -------------------------------------------------------
-                logger.warning("No JSON found in AI output, attempting fallback extraction")
+                logger.warning(
+                    "No JSON found in AI output after %d attempt(s), attempting fallback extraction",
+                    MAX_AI_ATTEMPTS
+                )
                 logger.info("Fallback extraction started for ticket %s", ticket_id)
 
-                # Start with NO category so we are forced to derive it properly
                 category = None
                 subcategory = "General Inquiry"
                 summary = "Support ticket processed"
@@ -484,7 +702,6 @@ def process_ticket_with_ai(ticket_id):
                 routing_found = False
                 summary_found = False
 
-                # --- Try to extract routing group from AI narrative ---
                 routing_match = re.search(r'Routing\s*Group\s*[:]\s*([^\n]+)', ai_output, re.IGNORECASE)
                 if routing_match:
                     routing_group = routing_match.group(1).strip()
@@ -501,7 +718,6 @@ def process_ticket_with_ai(ticket_id):
                         routing_found = True
                         logger.info("Category from routing group: %s", category)
 
-                # --- Try to extract summary from AI narrative ---
                 summary_match = re.search(r'\*\*Summary\*\*:\s*([^\n]+)', ai_output, re.IGNORECASE)
                 if not summary_match:
                     summary_match = re.search(r'Summary\s*[:]\s*([^\n]+)', ai_output, re.IGNORECASE)
@@ -511,8 +727,6 @@ def process_ticket_with_ai(ticket_id):
                     summary = extracted_summary
                     summary_found = True
 
-                # --- Set confidence only when BOTH routing and summary are found ---
-                # This prevents a good summary from masking a bad/missing category.
                 if routing_found and summary_found:
                     confidence = 0.9
                     logger.info("Both routing group and summary found; confidence set to 0.9")
@@ -520,7 +734,6 @@ def process_ticket_with_ai(ticket_id):
                     confidence = 0.7
                     logger.info("Only one of routing/summary found; confidence set to 0.7")
 
-                # --- Keyword scan of the AI output as a secondary signal ---
                 if not category:
                     logger.info("No routing group found; trying keyword scan of AI output")
                     if "Payroll" in ai_output or "Salary" in ai_output:
@@ -534,11 +747,6 @@ def process_ticket_with_ai(ticket_id):
                     if category:
                         logger.info("Category from AI output keyword scan: %s", category)
 
-                # --- PRIMARY SAFETY NET: score the raw ticket content ---
-                # FIX 2 & 3 apply here too: infer_category_from_ticket now
-                # requires min_score=2 hits and a 1.5× dominance ratio before
-                # it will return a category, preventing single-keyword false
-                # overrides and unfair scoring from the larger VPN keyword list.
                 ticket_inferred_category = infer_category_from_ticket(combined_ticket_text)
                 logger.info("Category inferred from raw ticket content: %s", ticket_inferred_category)
 
@@ -549,27 +757,35 @@ def process_ticket_with_ai(ticket_id):
                         category, ticket_inferred_category
                     )
                     category = ticket_inferred_category
-                    # Reduce confidence slightly to flag that inference was used
                     confidence = min(confidence, 0.85)
 
-                # --- Absolute last resort: no signal at all ---
                 if not category:
                     logger.warning("No category signal found anywhere; defaulting to HR / Leave")
                     category = "HR / Leave"
                     confidence = 0.5
 
-                # --- Derive a better summary from first readable line if still default ---
+                NARRATION_PREFIXES = (
+                    "i will", "i'll", "let me", "based on", "here is", "here's",
+                    "to summarize", "in order to", "as an ai", "sure,", "okay,",
+                    "i am going to", "i'm going to", "first,", "analyzing"
+                )
                 if not summary_found:
                     lines = ai_output.strip().split('\n')
                     for line in lines:
                         line = line.strip()
-                        if line and not line.startswith('*') and not line.startswith('#') and len(line) > 10:
-                            cleaned_line = line.replace('**', '').strip()
-                            summary = cleaned_line if len(cleaned_line) <= 100 else cleaned_line[:100] + "..."
-                            logger.info("Summary from first readable line: %s", summary)
-                            break
+                        if not line or line.startswith('*') or line.startswith('#') or len(line) <= 10:
+                            continue
+                        cleaned_line = line.replace('**', '').strip()
+                        if cleaned_line.lower().startswith(NARRATION_PREFIXES):
+                            logger.debug("Skipping narration line for summary: %s", cleaned_line)
+                            continue
+                        summary = cleaned_line if len(cleaned_line) <= 100 else cleaned_line[:100] + "..."
+                        logger.info("Summary from first readable line: %s", summary)
+                        break
+                    else:
+                        summary = "Support ticket processed; AI did not return a usable summary."
+                        logger.warning("No non-narration line found for fallback summary; using generic placeholder.")
 
-                # --- Subcategory derivation ---
                 subcategory = "General Inquiry"
                 if category == "HR / Leave":
                     if "maternity" in ai_output.lower():
@@ -606,7 +822,6 @@ def process_ticket_with_ai(ticket_id):
                     elif "configuration" in ai_output.lower() or "setup" in ai_output.lower():
                         subcategory = "VPN Configuration Issue"
 
-                # Also check ticket content for subcategory when AI output had no signal
                 if subcategory == "General Inquiry":
                     ticket_lower = combined_ticket_text.lower()
                     if category == "Technology / VPN":
@@ -625,13 +840,24 @@ def process_ticket_with_ai(ticket_id):
                 })
                 logger.info("Fallback JSON constructed: %s", clean_json_str)
 
-        # --- Parse the final JSON ---
-        try:
-            ai_data = json.loads(clean_json_str)
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse AI output as JSON: {e}")
+                ai_data = {
+                    "category": category,
+                    "subcategory": subcategory,
+                    "summary": summary,
+                    "confidence": confidence
+                }
+
+            if ai_data is None:
+                try:
+                    parsed = json.loads(clean_json_str)
+                    if isinstance(parsed, dict) and parsed.get('category') in VALID_CATEGORIES:
+                        ai_data = parsed
+                except json.JSONDecodeError:
+                    pass
+
+        if ai_data is None:
+            logger.error(f"Failed to parse usable AI output after fallback extraction.")
             logger.error(f"AI output was: {ai_output[:200]}...")
-            # Last resort — still use ticket-content inference for category
             inferred = infer_category_from_ticket(combined_ticket_text) or "HR / Leave"
             ai_data = {
                 "category": inferred,
@@ -641,23 +867,14 @@ def process_ticket_with_ai(ticket_id):
             }
 
         category = ai_data.get('category')
-        subcategory = ai_data.get('subcategory')
-        summary = ai_data.get('summary')
+        subcategory = ai_data.get('subcategory') or "General Inquiry"
+        summary = ai_data.get('summary') or "Support ticket processed; AI did not return a usable summary."
         confidence = ai_data.get('confidence')
         try:
             confidence = float(confidence) if confidence is not None else 0.0
         except (ValueError, TypeError):
             confidence = 0.0
 
-        # --- Final safety check: validate AI-returned category against ticket content ---
-        # FIX 2 & 3: infer_category_from_ticket requires min_score=2 and a 1.5×
-        # dominance ratio before returning a category, so it only fires on clear,
-        # unambiguous evidence.
-        #
-        # FIX 4: when the keyword inference AGREES with the AI, treat it as
-        # corroborating evidence and apply a confidence floor of 0.90. This is what
-        # was causing an obvious VPN ticket to stay at 0.7 — the agreement path
-        # previously did nothing, leaving the AI's low score untouched.
         ticket_inferred_category = infer_category_from_ticket(combined_ticket_text)
         if ticket_inferred_category and category == ticket_inferred_category:
             if confidence < 0.90:
@@ -675,13 +892,10 @@ def process_ticket_with_ai(ticket_id):
             )
             category = ticket_inferred_category
             confidence = min(confidence, 0.85)
-        # If infer_category_from_ticket returned None (ambiguous / low signal),
-        # neither branch fires and the AI's confidence is left as-is.
 
-        # Step 6A: Dynamic Team Lead Mapping Look-up
-        cursor.execute("SELECT TeamLead FROM TeamLeadMapping WHERE Category = ?", category)
-        mapping_row = cursor.fetchone()
-        assigned_tl = mapping_row[0] if mapping_row else "TL_GENERAL"
+        team_lead = get_team_lead_for_category(category)
+        assigned_tl = team_lead['id'] if team_lead else "TL_GENERAL"
+        tl_email = team_lead['email'] if team_lead else None
 
         cursor.execute(
             """
@@ -700,6 +914,31 @@ def process_ticket_with_ai(ticket_id):
         logger.info(f"Brief Summary: {summary}")
         logger.info(f"AI Confidence Score: {confidence:.2f}")
 
+        sender_name = extract_sender_name(sender)
+        sender_email_addr = extract_sender_email(sender)
+
+        if tl_email:
+            try:
+                send_plain_email(
+                    to_address=tl_email,
+                    subject=f"New Ticket Created [{ticket_id}]",
+                    body=(
+                        f"Employee {sender_name} with mail ID {sender_email_addr} "
+                        f"has created [{ticket_id}].\n\n"
+                        f"Category: {category} ({subcategory})\n"
+                        f"Summary: {summary}\n"
+                        f"AI Confidence: {confidence:.2f}\n\n"
+                        f"---------- Forwarded message ----------\n"
+                        f"From: {sender}\n"
+                        f"Subject: {subject}\n\n"
+                        f"{email_body.strip()}"
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to send ticket-creation notice to team lead for {ticket_id}: {e}")
+        else:
+            logger.warning(f"No team lead email found for category '{category}'; skipping TL creation notice.")
+
         try:
             cursor.execute("SELECT Notified FROM Tickets WHERE TicketID = ?", ticket_id)
             row = cursor.fetchone()
@@ -713,11 +952,79 @@ def process_ticket_with_ai(ticket_id):
             logger.info("Notification already sent for ticket %s, skipping", ticket_id)
         else:
             if confidence >= 0.9:
-                send_confidence_email(ticket_id, category, subcategory, summary, confidence)
                 cursor.execute("UPDATE Tickets SET Notified = 1 WHERE TicketID = ?", ticket_id)
                 conn.commit()
-                send_ai_response_email(ticket_id, category, subcategory, summary, confidence, assigned_tl, sender, matched_corporate_sop)
+                send_confidence_email(ticket_id, category, subcategory, summary, confidence)
+                user_ai_solution = send_ai_response_email(ticket_id, category, subcategory, summary, confidence, assigned_tl, sender, matched_corporate_sop)
+                cursor.execute("UPDATE Tickets SET Status = 'Resolved' WHERE TicketID = ?", ticket_id)
+                conn.commit()
                 add_ticket_note(ticket_id, 'SystemNote', 'Solution email sent via knowledge base.', None)
+
+                if tl_email:
+                    try:
+                        send_plain_email(
+                            to_address=tl_email,
+                            subject=f"{ticket_id}'s solution produced and sent to {sender_email_addr}",
+                            body=(
+                                f"{ticket_id}'s solution produced and sent to {sender_email_addr}.\n\n"
+                                f"{user_ai_solution}\n\n"
+                                f"Category: {category} ({subcategory})\n"
+                                f"Summary: {summary}\n"
+                                f"AI Confidence: {confidence:.2f}"
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send auto-resolution notice to team lead for {ticket_id}: {e}")
+
+            elif 0.7 <= confidence < 0.9:
+                user_solution = generate_user_facing_solution(
+                    ticket_summary=summary,
+                    category=category,
+                    subcategory=subcategory,
+                    sop_text=matched_corporate_sop,
+                    sender=sender
+                )
+                add_ticket_note(ticket_id, 'PendingApproval', user_solution, None)
+                cursor.execute("UPDATE Tickets SET Notified = 1, Status = 'PendingApproval' WHERE TicketID = ?", ticket_id)
+                conn.commit()
+
+                if tl_email:
+                    try:
+                        send_plain_email(
+                            to_address=tl_email,
+                            subject=f"Approval Needed: Solution for {ticket_id}",
+                            body=(
+                                f"{ticket_id} from {sender_email_addr} solution produced:\n\n"
+                                f"{user_solution}\n\n"
+                                f"waiting for approval. Reply Approved to approve, Reply Reject to Reject."
+                            )
+                        )
+                    
+                    except Exception as e:
+                        logger.error(f"Failed to send approval-request email to team lead for {ticket_id}: {e}")
+                else:
+                    logger.warning(f"No team lead email found for category '{category}'; cannot request approval for {ticket_id}.")
+
+            else:
+                cursor.execute("UPDATE Tickets SET Notified = 1, Status = 'Escalated' WHERE TicketID = ?", ticket_id)
+                conn.commit()
+                add_ticket_note(ticket_id, 'SystemNote', 'Escalated to team lead — low AI confidence.', None)
+
+                if tl_email:
+                    try:
+                        send_plain_email(
+                            to_address=tl_email,
+                            subject=f"Escalated Ticket: {ticket_id}",
+                            body=(
+                                f"{ticket_id} from {sender_email_addr} has been escalated to you "
+                                f"due to low AI confidence ({confidence:.2f}).\n\n"
+                                f"Category: {category} ({subcategory})\n"
+                                f"Summary: {summary}\n\n"
+                                f"Please review and respond to the employee directly."
+                            )
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed to send escalation email to team lead for {ticket_id}: {e}")
 
         cursor.close()
         conn.close()
@@ -726,132 +1033,9 @@ def process_ticket_with_ai(ticket_id):
         logger.error(f"AI Processing Error: {e}")
 
 
-# ==========================================
-# HELPER FUNCTIONS
-# ==========================================
-
-def generate_user_facing_solution(ticket_summary, category, subcategory, sop_text):
-    """
-    Use Ollama to rewrite internal SOP content into a friendly, actionable
-    self-service guide written directly for the end user.
-
-    The raw SOP text is written for internal staff / team leads. This function
-    transforms it into plain-English steps the user can follow themselves,
-    with a warm tone and no internal jargon.
-
-    Falls back to a generic holding message if Ollama is unavailable.
-    """
-    no_sop_messages = [
-        "No specific matching corporate SOP found.",
-        "No specific corporate SOP found."
-    ]
-    sop_available = sop_text and not any(msg in sop_text for msg in no_sop_messages)
-
-    if sop_available:
-        prompt = (
-            "You are a friendly customer support agent writing a solution email directly to an employee.\n"
-            "Your job is to rewrite the internal SOP guidance below into a clear, warm, step-by-step reply "
-            "that the employee can follow themselves to resolve their issue.\n\n"
-            "Rules:\n"
-            "- Write directly to the employee using 'you' (e.g. 'Please try the following steps').\n"
-            "- Do NOT mention internal terms like 'SOP', 'Team Lead', 'routing', 'policy document', or 'handling instructions'.\n"
-            "- Do NOT include any internal staff notes or escalation procedures.\n"
-            "- Use simple, plain English. No jargon.\n"
-            "- Format as a short intro sentence, then a numbered step-by-step list (max 6 steps).\n"
-            "- End with one reassuring sentence telling them to reply if the steps don't resolve the issue.\n"
-            "- Keep the total response under 200 words.\n\n"
-            f"Issue type: {category} — {subcategory}\n"
-            f"Issue summary: {ticket_summary}\n\n"
-            f"Internal SOP guidance:\n{sop_text}\n\n"
-            "User-facing solution:"
-        )
-    else:
-        # No SOP matched — ask the model to give a best-effort answer
-        # from its general knowledge for this category and issue type.
-        prompt = (
-            "You are a friendly customer support agent writing a solution email directly to an employee.\n"
-            "No specific policy document was found, so use your general knowledge to give helpful first steps.\n\n"
-            "Rules:\n"
-            "- Write directly to the employee using 'you'.\n"
-            "- Provide 3-5 practical self-service steps they can try right now.\n"
-            "- Use simple, plain English. No jargon.\n"
-            "- Format as a short intro sentence, then a numbered list.\n"
-            "- End by letting them know a support agent will follow up if the steps don't help.\n"
-            "- Keep the total response under 180 words.\n\n"
-            f"Issue type: {category} — {subcategory}\n"
-            f"Issue summary: {ticket_summary}\n\n"
-            "User-facing solution:"
-        )
-
-    try:
-        logger.info(f" -> [Email] Generating user-facing solution via Ollama (sop_available={sop_available})...")
-        response = ollama.chat(
-            model=config['ollama']['model'],
-            messages=[{'role': 'user', 'content': prompt}],
-            options={'temperature': 0.3}
-        )
-        solution = response['message']['content'].strip()
-        logger.debug(f"    [Email] User-facing solution generated ({len(solution)} chars)")
-        return solution
-    except Exception as e:
-        logger.warning(f"    [Email] Ollama unavailable for solution rewrite: {e}. Using fallback.")
-        return (
-            "Please try the following steps to resolve your issue:\n\n"
-            "1. Check that your details and credentials are correct.\n"
-            "2. Restart any relevant applications or systems.\n"
-            "3. If the issue persists, reply to this email with any error messages or screenshots.\n\n"
-            "A support agent will follow up with you shortly."
-        )
-
-
-def send_ai_response_email(ticket_id, category, subcategory, summary, confidence, assigned_tl, sender, matched_corporate_sop):
-    """
-    Send a solution email to the original ticket sender.
-    The solution is rewritten by Ollama into a user-friendly, actionable guide
-    rather than a dump of internal SOP text.
-    """
-    try:
-        smtp_config = config['smtp']
-
-        # Rewrite SOP content (or generate best-effort steps) as a
-        # friendly user-facing reply rather than internal documentation.
-        user_solution = generate_user_facing_solution(
-            ticket_summary=summary,
-            category=category,
-            subcategory=subcategory,
-            sop_text=matched_corporate_sop
-        )
-
-        msg = f"""Subject: Re: Your Support Request — Ticket {ticket_id}
-
-Hi,
-
-Thanks for reaching out to support. We've looked into your request and have put together some steps to help you resolve this.
-
-{user_solution}
-
----
-Your ticket reference: {ticket_id}
-If you need further help, simply reply to this email and our team will pick it up.
-
-— Support Team
-"""
-        logger.debug(f"Attempting to send solution email for ticket {ticket_id} to {sender}")
-        server = smtplib.SMTP(smtp_config['server'], smtp_config['port'])
-        server.starttls()
-        server.login(smtp_config['email'], smtp_config['app_password'])
-        server.sendmail(smtp_config['email'], sender, msg.encode('utf-8'))
-        server.quit()
-        logger.info(f"Sent solution email for ticket {ticket_id} (confidence: {confidence:.2f})")
-    except Exception as e:
-        logger.error(f"Failed to send solution email for ticket {ticket_id}: {e}")
-        raise
 
 
 def add_ticket_note(ticket_id, note_type, note_body, created_by=None):
-    """
-    Insert a note into the TicketNotes table.
-    """
     try:
         conn = pyodbc.connect(config['database']['conn_str'])
         cursor = conn.cursor()
@@ -882,20 +1066,201 @@ def add_ticket_note(ticket_id, note_type, note_body, created_by=None):
 
 
 def extract_ticket_id_from_subject(subject):
-    """
-    Extract ticket ID from a subject like 'Re: Solution for Ticket INC-2026-1234'.
-    Returns ticket ID if found, else None.
-    """
     match = re.search(r'Re:\s*Solution\s+for\s+Ticket\s+(INC-\d{4}-\d{4})', subject, re.IGNORECASE)
     if match:
         return match.group(1)
     return None
 
 
+def extract_ticket_id_from_approval_subject(subject):
+    match = re.search(r'Approval\s+Needed:\s*Solution\s+for\s+(INC-\d{4}-\d{4})', subject, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_ticket_id_from_escalation_subject(subject):
+    match = re.search(r'Escalated\s+Ticket\s*:\s*(INC-\d{4}-\d{4})', subject, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return None
+
+
+def extract_lead_message(body):
+    """
+    Pull the team lead's own written reply out of an email body, stripping
+    quoted thread history (e.g. 'On ... wrote:' / '----- Original Message -----')
+    and any standalone 'Approved'/'Reject' decision line, leaving just the
+    free-text response (if any) they wrote to be forwarded to the employee.
+    """
+    quote_split = re.split(
+        r'\r?\nOn .{0,80} wrote:|\r?\n-{2,}\s*Original Message\s*-{2,}|\r?\n_{5,}',
+        body,
+        maxsplit=1,
+        flags=re.IGNORECASE
+    )
+    main_text = quote_split[0]
+
+    cleaned_lines = []
+    for line in main_text.splitlines():
+        stripped_line = re.sub(r'^>+\s*', '', line).strip()
+        if not stripped_line:
+            continue
+        if re.fullmatch(r'(approved|reject(ed)?)[.!]?', stripped_line, re.IGNORECASE):
+            continue
+        cleaned_lines.append(stripped_line)
+
+    return '\n'.join(cleaned_lines).strip()
+
+
+def handle_team_lead_approval_reply(ticket_id, body, sender):
+    # Only look at the team lead's own typed reply, not the quoted original
+    # message (which always contains the literal words "Approved"/"Reject"
+    # in the "Reply Approved to approve, Reply Reject to Reject" instructions).
+    lead_only_text = extract_lead_message(body)
+    decision_source = lead_only_text if lead_only_text else body
+    # Remove the boilerplate "Reply Approved to approve, Reply Reject to
+    # Reject." instruction line (often retained in quoted/forwarded text)
+    # so it can't be mistaken for the lead's own decision.
+    decision_source = re.sub(
+        r'reply\s+approved\s+to\s+approve,?\s+reply\s+reject\s+to\s+reject\.?',
+        '', decision_source, flags=re.IGNORECASE
+    )
+    body_lower = decision_source.lower()
+    decision = None
+    if re.search(r'\bapproved\b', body_lower):
+        decision = 'Approved'
+    elif re.search(r'\breject(ed)?\b', body_lower):
+        decision = 'Rejected'
+
+    if decision is None:
+        logger.warning(f"Team lead reply for {ticket_id} did not contain 'Approved' or 'Reject'; ignoring.")
+        return
+
+    try:
+        conn = pyodbc.connect(config['database']['conn_str'])
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT Category, Subcategory, Summary, AssignedTeamLead, Sender FROM Tickets WHERE TicketID = ?",
+            ticket_id
+        )
+        row = cursor.fetchone()
+        if not row:
+            logger.warning(f"Approval reply received for unknown ticket {ticket_id}")
+            cursor.close()
+            conn.close()
+            return
+        category, subcategory, summary, assigned_tl, employee_sender = row
+
+        cursor.execute(
+            "SELECT NoteBody FROM TicketNotes WHERE TicketID = ? AND NoteType = 'PendingApproval' ORDER BY NoteID DESC",
+            ticket_id
+        )
+        note_row = cursor.fetchone()
+        user_solution = note_row[0] if note_row else None
+
+        if decision == 'Approved':
+            if user_solution:
+                employee_email_addr = extract_sender_email(employee_sender)
+                send_plain_email(
+                    to_address=employee_email_addr,
+                    subject=f"Re: Solution for Ticket {ticket_id}",
+                    body=(
+                        f"{user_solution}\n\n"
+                        f"---\nYour ticket reference: {ticket_id}"
+                    )
+                )
+                cursor.execute("UPDATE Tickets SET Status = 'Resolved' WHERE TicketID = ?", ticket_id)
+                conn.commit()
+                add_ticket_note(ticket_id, 'SystemNote', 'Team lead approved solution; sent to employee.', sender)
+                logger.info(f"Team lead approved {ticket_id}; solution sent to {employee_email_addr}.")
+            else:
+                logger.error(f"No stored solution found for approved ticket {ticket_id}; cannot send.")
+        else:
+            lead_message = extract_lead_message(body)
+            employee_email_addr = extract_sender_email(employee_sender)
+
+            if lead_message:
+                send_plain_email(
+                    to_address=employee_email_addr,
+                    subject=f"Re: Solution for Ticket {ticket_id}",
+                    body=(
+                        f"{lead_message}\n\n"
+                        f"---\nYour ticket reference: {ticket_id}"
+                    )
+                )
+                cursor.execute("UPDATE Tickets SET Status = 'Resolved' WHERE TicketID = ?", ticket_id)
+                conn.commit()
+                add_ticket_note(
+                    ticket_id, 'SystemNote',
+                    'Team lead rejected suggested solution and sent a custom response to employee.', sender
+                )
+                logger.info(
+                    f"Team lead rejected suggested solution for {ticket_id}; "
+                    f"custom response forwarded to {employee_email_addr}."
+                )
+            else:
+                cursor.execute("UPDATE Tickets SET Status = 'Rejected' WHERE TicketID = ?", ticket_id)
+                conn.commit()
+                add_ticket_note(ticket_id, 'SystemNote', 'Team lead rejected suggested solution; not sent to employee.', sender)
+                logger.info(f"Team lead rejected {ticket_id}; no email sent to employee.")
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to process team lead approval reply for {ticket_id}: {e}")
+
+
+def handle_team_lead_escalation_reply(ticket_id, body, sender):
+    lead_message = extract_lead_message(body)
+
+    if not lead_message:
+        logger.warning(
+            f"Team lead escalation reply for {ticket_id} contained no usable response text; ignoring."
+        )
+        return
+
+    try:
+        conn = pyodbc.connect(config['database']['conn_str'])
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT Category, Subcategory, Summary, Sender FROM Tickets WHERE TicketID = ?",
+            ticket_id
+        )
+        row = cursor.fetchone()
+        if not row:
+            logger.warning(f"Escalation reply received for unknown ticket {ticket_id}")
+            cursor.close()
+            conn.close()
+            return
+        category, subcategory, summary, employee_sender = row
+        employee_email_addr = extract_sender_email(employee_sender)
+
+        send_plain_email(
+            to_address=employee_email_addr,
+            subject=f"Re: Solution for Ticket {ticket_id}",
+            body=(
+                f"{lead_message}\n\n"
+                f"---\nYour ticket reference: {ticket_id}"
+            )
+        )
+        cursor.execute("UPDATE Tickets SET Status = 'Resolved' WHERE TicketID = ?", ticket_id)
+        conn.commit()
+        add_ticket_note(
+            ticket_id, 'SystemNote',
+            'Team lead responded to escalation; response forwarded to employee.', sender
+        )
+        logger.info(
+            f"Team lead's escalation response for {ticket_id} forwarded to {employee_email_addr}."
+        )
+
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        logger.error(f"Failed to process team lead escalation reply for {ticket_id}: {e}")
+
+
 def send_confidence_email(ticket_id, category, subcategory, summary, confidence):
-    """
-    Send an email notification when AI confidence is high.
-    """
     try:
         smtp_config = config['smtp']
         msg = f"""Subject: High Confidence Ticket Notification: {ticket_id}
@@ -919,10 +1284,6 @@ This is an automated notification from the AI Email Ticketing Service.
         logger.error(f"Failed to send confidence email for ticket {ticket_id}: {e}")
         raise
 
-
-# ==========================================
-# EXECUTION CONTROLLER
-# ==========================================
 
 if __name__ == "__main__":
     executor = ThreadPoolExecutor(max_workers=config['processing']['thread_pool_size'])
