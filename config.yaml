@@ -33,3 +33,27 @@ logging:
   level: "INFO"
   # If set, logs will be written to this file in addition to console
   file: ""
+team_leads:
+  - id: TL001
+    name: 
+    email: 
+    categories:
+      - "Payroll / Salary"
+
+  - id: TL002
+    name: 
+    email: 
+    categories:
+      - "Finance / Invoice"
+
+  - id: TL003
+    name: 
+    email: 
+    categories:
+      - "Technology / VPN"
+
+  - id: TL004
+    name:
+    email:
+    categories:
+      - "HR / Leave"
