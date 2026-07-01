@@ -1237,6 +1237,11 @@ document.addEventListener('fullscreenchange', () => {
     // ═══════════════════════════════════════════
     gsap.registerPlugin(ScrollTrigger, ScrollToPlugin);
 
+    // Page overlay (fires after loading screen fades) — must run on ALL devices,
+    // otherwise mobile is left with a black #page-overlay covering the page forever.
+    const overlay = document.getElementById('page-overlay');
+    overlay.style.display = 'none';
+
     // Disable heavy animations on mobile for better performance
     const isMobile = window.matchMedia('(max-width: 900px)').matches;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1270,10 +1275,6 @@ document.addEventListener('fullscreenchange', () => {
       el.addEventListener('mouseenter', () => cursor.classList.add('large'));
       el.addEventListener('mouseleave', () => cursor.classList.remove('large'));
     });
-
-    // Page overlay (fires after loading screen fades)
-    const overlay = document.getElementById('page-overlay');
-    overlay.style.display = 'none'; // loading screen covers it; no double-fade needed
 
     ScrollTrigger.create({
       trigger: '.arch-section',
