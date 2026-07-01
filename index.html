@@ -1241,22 +1241,7 @@ document.addEventListener('fullscreenchange', () => {
     const isMobile = window.matchMedia('(max-width: 900px)').matches;
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    if (!isMobile && !prefersReducedMotion) {
-
-    // Cursor
-    const cursor = document.getElementById('cursor');
-    document.addEventListener('mousemove', e => {
-      gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1, ease: 'none' });
-    });
-    document.querySelectorAll('a, button, .feature-item').forEach(el => {
-      el.addEventListener('mouseenter', () => cursor.classList.add('large'));
-      el.addEventListener('mouseleave', () => cursor.classList.remove('large'));
-    });
-
-    // Page overlay (fires after loading screen fades)
-    const overlay = document.getElementById('page-overlay');
-    overlay.style.display = 'none'; // loading screen covers it; no double-fade needed
-
+    // Hero animations - run on ALL devices (function has mobile/desktop logic inside)
     function startHeroAnimations() {
       if (isMobile || prefersReducedMotion) {
         gsap.to('.hero-eyebrow span', { y: 0, duration: 0.3, ease: 'none', delay: 0.05 });
@@ -1273,6 +1258,22 @@ document.addEventListener('fullscreenchange', () => {
 
     // Trigger hero anims after loading screen clears (~2s)
     setTimeout(startHeroAnimations, 2000);
+
+    if (!isMobile && !prefersReducedMotion) {
+
+    // Cursor
+    const cursor = document.getElementById('cursor');
+    document.addEventListener('mousemove', e => {
+      gsap.to(cursor, { x: e.clientX, y: e.clientY, duration: 0.1, ease: 'none' });
+    });
+    document.querySelectorAll('a, button, .feature-item').forEach(el => {
+      el.addEventListener('mouseenter', () => cursor.classList.add('large'));
+      el.addEventListener('mouseleave', () => cursor.classList.remove('large'));
+    });
+
+    // Page overlay (fires after loading screen fades)
+    const overlay = document.getElementById('page-overlay');
+    overlay.style.display = 'none'; // loading screen covers it; no double-fade needed
 
     ScrollTrigger.create({
       trigger: '.arch-section',
